@@ -164,26 +164,13 @@ test('requirements: repeated offers from different teams and independent manual 
   await assert.rejects(api.decideOffer(orbit[0].id, 'declined'), /уже подтверждён/);
 });
 
-test('catalog filters readiness boundaries together with topic and search', () => {
-  const nodes = new Map();
-  const node = selector => {
-    if (!nodes.has(selector)) nodes.set(selector, { innerHTML: '', textContent: '', addEventListener() {} });
-    return nodes.get(selector);
-  };
-  const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
-  const instrumented = source.replace(/  render\(\);\s*\}\)\(\);\s*$/, '  window.testCatalog = { state, renderCards };\n})();');
-  assert.notEqual(instrumented, source);
-  const window = { platformApi: { meta: { persistent: true } }, createDraftAutosave: () => ({}), createAIFlow: () => ({}), createMatchUI: () => ({}), addEventListener() {} };
-  runInNewContext(instrumented, { window, document: { querySelector: node, addEventListener() {} } });
-  const { state, renderCards } = window.testCatalog;
-  const tasks = [0, 39, 40, 69, 70, 89, 90, 100].map(score => ({ id: 'task-' + score, title: 'Задача ' + score, company: 'Компания',
-    problem: 'Контекст', category: score === 100 ? 'Дизайн' : 'Аналитика', rating: { total: score }, status: 'published', deadline: '2 недели' }));
-  for (let i = 0; i < 4; i++) { state.readiness = String(i); renderCards(tasks); assert.equal(node('#result-count').textContent, 'Найдено: 2'); }
-  state.filter = 'Дизайн'; renderCards(tasks); assert.equal(node('#result-count').textContent, 'Найдено: 1');
-  assert.ok(node('#cards').innerHTML.includes('Задача 100'));
-  state.search = 'нет такой задачи'; renderCards(tasks); assert.equal(node('#result-count').textContent, 'Найдено: 0');
-  state.readiness = ''; state.filter = ''; state.search = ''; renderCards(tasks);
-  assert.equal(node('#result-count').textContent, 'Найдено: 8');
+test('catalog filters readiness boundaries together with topic and search', async () => {
+  const { default: catalog } = await import('../public/catalog-engine.cjs');
+  const tasks = [0,39,40,69,70,89,90,100].map(score=>({id:'task-'+score,title:'Задача '+score,company:'Компания',context:'Контекст',published:true,category:score===100?'Дизайн':'Аналитика',score}));
+  for(const readiness of ['0-39','40-69','70-89','90-100']) assert.equal(catalog.query(tasks,{readiness}).pagination.total,2);
+  assert.equal(catalog.query(tasks,{readiness:'90-100',category:'ui-ux'}).items[0].title,'Задача 100');
+  assert.equal(catalog.query(tasks,{search:'нет такой задачи'}).pagination.total,0);
+  assert.equal(catalog.query(tasks,{}).pagination.total,8);
 });
 
 test('offline demo supports the same repeated-offer decisions as the live adapter', async () => {

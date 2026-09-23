@@ -42,7 +42,7 @@
   }
   const directions = value => {
     const key = canonical(value);
-    const map = { fullstack: ['frontend', 'backend'], 'веб-разработка': ['frontend', 'backend'], 'web development': ['frontend', 'backend'], 'ии и автоматизация': ['ai'], 'аналитика': ['data'], analytics: ['data'], 'data science': ['data'], 'дизайн': ['design'], 'исследования': ['research'], 'мобильная разработка': ['mobile'] };
+    const map = { fullstack: ['frontend', 'backend'], 'ai / ml': ['ai'], 'ui / ux': ['design'], 'веб-разработка': ['frontend', 'backend'], 'web development': ['frontend', 'backend'], 'ии и автоматизация': ['ai'], 'аналитика': ['data'], analytics: ['data'], 'data science': ['data'], 'дизайн': ['design'], 'исследования': ['research'], 'мобильная разработка': ['mobile'] };
     return map[key] || [key];
   };
   const related = (a, b) => a && b && directions(a).some(key => directions(b).includes(key));

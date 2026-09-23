@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { calculateRating, fields } from './rating.js';
 import { describeRating } from './presentation.js';
+import catalog from '../public/catalog-engine.cjs';
 import { calculateMatch, normalizeProfile, validateTaskMatchFields } from './match.js';
 
 export class ApiError extends Error {
@@ -36,6 +37,7 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
   // Older databases have no stages; preserve their tasks and proposals.
   state.stages ??= [];
   state.students ??= {};
+  state.savedTasks ??= {};
   if (!state.students || typeof state.students !== 'object' || Array.isArray(state.students)) throw new Error('Некорректные профили');
   if (!Array.isArray(state.stages)) throw new Error('Некорректные этапы в файле данных');
   function commit(next) {
@@ -47,7 +49,8 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
   function task(id) {
     const found = state.tasks.find(item => item.id === id);
     if (!found) throw new ApiError(404, 'Задача не найдена');
-    return { ...found, ...describeRating(found) };
+    const proposals = state.proposals.filter(p => p.taskId === id);
+    return { ...found, ...describeRating(found), canApply: catalog.canApply(found), offerCount: proposals.length, applicantsCount: new Set(proposals.map(p => p.teamId || p.id)).size };
   }
   function studentProfile(id) {
     const saved = Object.hasOwn(state.students, id) ? state.students[id] : normalizeProfile({});
@@ -78,8 +81,25 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
     });
     return task(taskId);
   }
-  const taskKeys = ['title', 'company', 'category', 'deadline', 'need', 'interactionFormat', 'requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'requiredHours', 'aiSession', 'aiAssumptions', 'aiMissingInfo', ...Object.keys(fields)];
+  const taskKeys = ['title', 'company', 'category', 'deadline', 'need', 'interactionFormat', 'requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'requiredHours', 'durationWeeks', 'teamSize', 'workFormat', 'applicationDeadline', 'aiSession', 'aiAssumptions', 'aiMissingInfo', ...Object.keys(fields)];
   return {
+    queryCatalog(query, studentId) {
+      const counts = new Map(), applicants = new Map();
+      for (const p of state.proposals) { counts.set(p.taskId, (counts.get(p.taskId)||0)+1); if (!applicants.has(p.taskId)) applicants.set(p.taskId,new Set()); applicants.get(p.taskId).add(p.teamId||p.id); }
+      const tasks = state.tasks.map(t=>({...t,...describeRating(t),offerCount:counts.get(t.id)||0,applicantsCount:applicants.get(t.id)?.size||0}));
+      return catalog.query(tasks,query,{student:studentId?studentProfile(studentId):null,savedIds:studentId && Object.hasOwn(state.savedTasks,studentId)?state.savedTasks[studentId]:[]});
+    },
+    getCatalogTask(id, studentId) {
+      return catalog.enrich(task(id),{student:studentId?studentProfile(studentId):null,savedIds:studentId && Object.hasOwn(state.savedTasks,studentId)?state.savedTasks[studentId]:[]});
+    },
+    setSavedTask(studentId, taskId, saved) {
+      if (!studentId || studentId.length>100 || typeof saved !== 'boolean') throw new ApiError(400,'Некорректная закладка');
+      if (!task(taskId).published) throw new ApiError(409,'Можно сохранять только опубликованные задачи');
+      const ids = new Set(Object.hasOwn(state.savedTasks,studentId)?state.savedTasks[studentId]:[]);
+      if (saved) ids.add(taskId); else ids.delete(taskId);
+      commit({...state,savedTasks:{...state.savedTasks,[studentId]:[...ids]}});
+      return {taskId,isSaved:saved};
+    },
     getStudentProfile: studentProfile,
     saveStudentProfile(id, input) {
       if (typeof id !== 'string' || !id.trim() || id.length > 100) throw new ApiError(400, 'Некорректный идентификатор участника');
@@ -127,8 +147,9 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
     createTask(input) {
       const values = strings(input, taskKeys);
       validateTaskMatchFields(values);
+      try { catalog.validateFields(values); } catch (error) { throw new ApiError(400,error.message); }
       const item = { ...Object.fromEntries(taskKeys.map(key => [key, ''])), ...values,
-        id: randomUUID(), published: false };
+        id: randomUUID(), published: false, createdAt: new Date().toISOString() };
       Object.assign(item, calculateRating(item));
       commit({ ...state, tasks: [...state.tasks, item] });
       return task(item.id);
@@ -136,19 +157,21 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
     updateTask(id, input) {
       const values = strings(input, taskKeys);
       validateTaskMatchFields(values);
+      try { catalog.validateFields(values); } catch (error) { throw new ApiError(400,error.message); }
       const item = { ...task(id), ...values };
       Object.assign(item, calculateRating(item));
       commit({ ...state, tasks: state.tasks.map(old => old.id === id ? item : old) });
       return task(id);
     },
     publishTask(id) {
-      const item = { ...task(id), published: true };
+      const old = task(id);
+      const item = { ...old, published: true, publishedAt: old.publishedAt || new Date().toISOString() };
       commit({ ...state, tasks: state.tasks.map(old => old.id === id ? item : old) });
       return task(id);
     },
     createProposal(taskId, input) {
       if (!task(taskId).published) throw new ApiError(409, 'Задача еще не опубликована');
-      if (task(taskId).selectionDone) throw new ApiError(409, 'Приём предложений завершён');
+      if (!catalog.canApply(task(taskId))) throw new ApiError(409, 'Приём предложений завершён или дедлайн прошёл');
       const keys = ['teamName', 'idea', 'plan', 'deadline', 'prototypeUrl', 'teamId', 'members', 'contact'];
       const values = strings(input, keys);
       for (const key of ['teamName', 'idea', 'plan', 'deadline']) {

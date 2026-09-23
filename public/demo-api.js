@@ -35,13 +35,18 @@
   try { db = JSON.parse(localStorage.getItem(KEY)); } catch (_) { /* Memory fallback below. */ }
   if (!db || !Array.isArray(db.tasks) || !Array.isArray(db.offers) || !Array.isArray(db.stages)) db = copy(seed);
   db.students ??= {};
+  db.savedTasks ??= {};
+  if (window.MostCatalogDemo) {
+    const examples = window.MostCatalogDemo.build();
+    for (const t of examples.tasks) if (!db.tasks.some(old=>old.id===t.id)) { db.tasks.push(t); db.offers.push(...examples.offers.filter(o=>o.taskId===t.id)); }
+  }
   if (window.MostMatchDemo && !db.tasks.some(t => t.id === window.MostMatchDemo.task.id)) db.tasks.push(copy(window.MostMatchDemo.task));
   const studentProfile = () => ({ ...(Object.hasOwn(db.students, currentTeam().id) ? copy(db.students[currentTeam().id]) : window.MostMatch.profile({})), completedTasks: db.stages.filter(s => s.teamId === currentTeam().id && s.status === 'approved').map(s => { const t = findTask(s.taskId); return { title: t.title, skills: t.requiredSkills || [], category: t.category, completed: true, url: s.url }; }) });
   let persistent = true;
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (_) { persistent = false; } };
   save();
   const findTask = taskId => { const task = db.tasks.find(t => t.id === taskId); if (!task) throw new Error('Задача не найдена.'); return task; };
-  const withRating = task => ({ ...task, rating: rate(task), offerCount: db.offers.filter(o => o.taskId === task.id).length });
+  const withRating = task => ({ ...task, canApply: window.MostCatalog ? window.MostCatalog.canApply(task) : task.status === 'published', applicantsCount: new Set(db.offers.filter(o=>o.taskId===task.id).map(o=>o.teamId||o.id)).size, rating: rate(task), offerCount: db.offers.filter(o => o.taskId === task.id).length });
   const asyncMethod = fn => async (...args) => { await new Promise(resolve => setTimeout(resolve, 130)); return copy(fn(...args)); };
   function finishSelection(taskId, proposalIds) {
     const task = findTask(taskId);
@@ -61,8 +66,10 @@
     getProfile: asyncMethod(studentProfile),
     saveProfile: asyncMethod(student => { db.students[currentTeam().id] = window.MostMatch.profile(student); save(); return studentProfile(); }),
     matchTask: asyncMethod((student, task) => window.MostMatch.calculate(student, task)),
+    listCatalog: asyncMethod((query, student) => window.MostCatalog.query(db.tasks.map(withRating), query, {student:student?studentProfile():null,savedIds:student && Object.hasOwn(db.savedTasks,currentTeam().id)?db.savedTasks[currentTeam().id]:[]})),
+    saveTask: asyncMethod((taskId, saved) => { findTask(taskId); const ids=new Set(Object.hasOwn(db.savedTasks,currentTeam().id)?db.savedTasks[currentTeam().id]:[]); if (saved) ids.add(taskId); else ids.delete(taskId); db.savedTasks[currentTeam().id]=[...ids]; save(); return {taskId,isSaved:saved}; }),
     listTasks: asyncMethod(() => db.tasks.filter(t => t.status !== 'draft').map(withRating).sort((a, b) => b.rating.total - a.rating.total)),
-    getTask: asyncMethod(taskId => withRating(findTask(taskId))),
+    getTask: asyncMethod(taskId => window.MostCatalog ? window.MostCatalog.enrich(withRating(findTask(taskId)),{student:studentProfile(),savedIds:Object.hasOwn(db.savedTasks,currentTeam().id)?db.savedTasks[currentTeam().id]:[]}) : withRating(findTask(taskId))),
     getQuestions: asyncMethod(description => {
       const text = description.toLowerCase();
       const context = /сайт|запис|приложен/.test(text) ? 'Какие действия пользователь должен выполнять в готовом интерфейсе?' : /прогноз|данн|аналит/.test(text) ? 'Какие решения вы хотите принимать на основе анализа?' : 'Что команда должна передать вам в конце работы?';
@@ -80,13 +87,13 @@
     saveDraft: asyncMethod(draft => { db.draft = draft; save(); return draft; }),
     rateTask: asyncMethod(rate),
     publishTask: asyncMethod(draft => {
-      const task = { ...draft, id: id('task'), ownerId: 'business-1', status: 'published', selectedTeamIds: [], selectionDone: false };
+      const task = { ...draft, id: id('task'), ownerId: 'business-1', status: 'published', createdAt: new Date().toISOString(), publishedAt: new Date().toISOString(), selectedTeamIds: [], selectionDone: false };
       db.tasks.unshift(task); db.draft = null; save(); return withRating(task);
     }),
     listOffers: asyncMethod(taskId => db.offers.filter(o => o.taskId === taskId)),
     submitOffer: asyncMethod((taskId, data) => {
       const task = findTask(taskId);
-      if (task.status !== 'published' || task.selectionDone) throw new Error('Приём предложений завершён.');
+      if (task.status !== 'published' || task.selectionDone || (window.MostCatalog && !window.MostCatalog.canApply(task))) throw new Error('Приём предложений завершён.');
 
       const student = studentProfile();
       let matchSnapshot = null;
