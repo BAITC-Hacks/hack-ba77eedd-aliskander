@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { createStore, ApiError } from './store.js';
-import { describeRating, clarificationQuestions } from './presentation.js';
+import { describeRating, describeAIRating, clarificationQuestions } from './presentation.js';
 import { createAIService } from './ai.js';
 import { createSampleData } from './sample-data.js';
 import { calculateMatch, explanationFacts } from './match.js';
@@ -63,7 +63,7 @@ export function createApp(store, ai = createAIService()) {
       if (method === 'POST' && ['/api/rating', '/api/questions'].includes(path)) {
         const input = await body(request);
         if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApiError(400, 'Ожидается JSON-объект');
-        return json(200, path === '/api/rating' ? describeRating(input) : clarificationQuestions(input));
+        return json(200, path === '/api/rating' ? await describeAIRating(input, ai) : clarificationQuestions(input));
       }
       if (method === 'GET' && path === '/api/stages') return json(200, store.listStages());
       const selection = path.match(/^\/api\/tasks\/([^/]+)\/selection$/);
