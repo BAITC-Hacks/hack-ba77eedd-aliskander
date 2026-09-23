@@ -32,7 +32,12 @@ test('rating: weights, empty strings, all combinations and level boundaries', ()
   assert.equal(calculateRating({ title: 'Название' }).score, 0);
   assert.equal(calculateRating({ context: '  \n\t', data: '', contact: null }).score, 0);
   assert.equal(calculateRating({ context: 'Проблема', expectedResult: 'Результат' }).score, 35);
-  assert.equal(calculateRating({ context: 'Да', expectedResult: 'Да', data: 'Да', users: 'Да', contact: 'Да' }).score, 75);
+  assert.equal(calculateRating({ context: 'Да', expectedResult: 'Да', data: 'Да', users: 'Да', contact: 'Да' }).score, 0);
+  const garbage = Object.fromEntries(Object.keys(fields).map(key => [key, 'а']));
+  assert.equal(calculateRating(garbage).score, 0);
+  for (const filler of ['аааааа', 'тест', 'тест тест тест', 'lorem ipsum', '---']) {
+    assert.equal(calculateRating({ context: filler }).score, 0, filler);
+  }
   for (const [score, level] of [[0, 'Черновик'], [39, 'Черновик'], [40, 'Рабочая'], [69, 'Рабочая'], [70, 'Готовая'], [89, 'Готовая'], [90, 'Приоритетная'], [100, 'Приоритетная']]) {
     assert.equal(levelForScore(score), level);
   }
@@ -42,7 +47,7 @@ test('rating: weights, empty strings, all combinations and level boundaries', ()
     let expected = 0;
     const missing = [];
     entries.forEach(([key, [label, weight]], index) => {
-      task[key] = mask & (1 << index) ? ' заполнено ' : '  ';
+      task[key] = mask & (1 << index) ? ' содержательное описание ' : '  ';
       if (mask & (1 << index)) expected += weight;
       else missing.push(label);
     });

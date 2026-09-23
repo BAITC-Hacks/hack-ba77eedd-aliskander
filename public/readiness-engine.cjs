@@ -12,7 +12,19 @@
     users: ['Пользователи', 10, 'Кто и в какой ситуации будет использовать решение?'],
     contact: ['Контакт бизнеса', 10, 'Как команда свяжется с ответственным человеком?']
   };
-  const filled = value => typeof value === 'string' && Boolean(value.trim()) && !/^(?:пока\s+)?(?:не знаю|не определено|не определён|не указан[оы]?|уточняется|обсудим|tbd|n\/a|[-—?.]+)[.!]?$/i.test(value.trim());
+  const placeholders = /^(?:пока\s+)?(?:не знаю|не определено|не определён|не указан[оы]?|уточняется|обсудим|потом|тест|текст|пример|заглушка|без комментариев|tbd|todo|n\/a|none|null|lorem(?:\s+ipsum)?|asdf|qwerty|x+|[-—?.]+)[.!]?$/i;
+  function filled(value) {
+    if (typeof value !== 'string') return false;
+    const normalized = value.trim().replace(/\s+/g, ' ');
+    const meaningful = normalized.match(/[\p{L}\p{N}]/gu) || [];
+    if (meaningful.length < 3 || placeholders.test(normalized)) return false;
+    // Reject strings made from one repeated letter/digit (with any separators),
+    // as well as repeated filler words such as "тест тест тест".
+    if (new Set(meaningful.map(char => char.toLocaleLowerCase())).size === 1) return false;
+    const words = normalized.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+    if (words.length > 1 && new Set(words).size === 1) return false;
+    return true;
+  }
   const levelForScore = score => score < 40 ? 'Черновик' : score < 70 ? 'Рабочая' : score < 90 ? 'Готовая' : 'Приоритетная';
   function describe(input = {}) {
     const breakdown = Object.entries(fields).map(([key, [label, max, hint]]) => ({ key, label, max, hint, points: filled(input[key]) ? max : 0 }));

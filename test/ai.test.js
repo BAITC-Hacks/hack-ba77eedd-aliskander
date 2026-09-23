@@ -56,6 +56,23 @@ test('AI output rejects repeated questions, fabricated schema shapes and invalid
   assert.equal(validateOutput(ready, input).task.title, 'Бот записи');
 });
 
+test('AI draft removes invented deadline, contact, data and budget', () => {
+  const plainDescription = 'Нужен сервис, который упростит клиентам запись на занятия в студии.';
+  const input = validateInput({ action: 'answer', description: plainDescription, answers: [
+    { key: 'goal', question: 'Какова цель?', answer: 'Сократить ручную запись' },
+    { key: 'data', question: 'Какие данные доступны?', answer: 'Не определено' },
+    { key: 'contact', question: 'Кто будет на связи?', answer: 'Пока не указан' }
+  ] });
+  const invented = { ...generated, estimatedDuration: 'Две недели', data: 'Готовая CSV-выгрузка',
+    contact: 'manager@example.test', constraints: 'Только веб. Бюджет 100 000 рублей.' };
+  const result = validateOutput({ ...ready, task: invented }, input).task;
+  assert.equal(result.estimatedDuration, '');
+  assert.equal(result.data, '');
+  assert.equal(result.contact, '');
+  assert.equal(result.constraints, 'Только веб.');
+  assert.ok(['estimatedDuration', 'data', 'contact', 'budget'].every(key => result.missingInfo.includes(key)));
+});
+
 test('third interview answer is accepted when AI returns more follow-ups than slots left', () => {
   const answers = ['goal', 'requirements', 'successCriteria'].map(key => ({ key, question: 'Уточните ' + key, answer: 'Подтверждённый ответ' }));
   const input = validateInput({ action: 'answer', description, answers });

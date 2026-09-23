@@ -64,6 +64,7 @@ export function validateOutput(output, input) {
   if (output.status === 'ready') {
     validateTask(output.task);
     if (output.questions.length) throw new ApiError(502, 'AI вернул неоднозначный результат');
+    output = { ...output, task: removeUnsupportedSensitiveFacts(output.task, input) };
   } else {
     const remaining = 5 - input.answers.length;
     const min = input.action === 'analyze' ? 3 : 1;
@@ -79,6 +80,43 @@ export function validateOutput(output, input) {
     if (output.questions.length > remaining) return { ...output, questions: output.questions.slice(0, remaining) };
   }
   return output;
+}
+
+const evidencePatterns = {
+  data: /(?:\b(?:данн|csv|excel|таблиц|файл|выгруз|api|материал|датасет|dataset)\w*|\bдоступ(?:ы|\s+к)\b)/iu,
+  contact: /(?:@|\+?\d[\d\s()\-]{6,}|\b(?:контакт|почт|email|телефон|telegram|whatsapp|связ)\w*)/iu,
+  estimatedDuration: /(?:\b\d+\s*(?:дн|день|дня|дней|недел|месяц|месяц[аеов]?|час)|\b(?:срок|дедлайн|deadline)\w*)/iu,
+  budget: /(?:\b(?:бюджет|стоимост|финансирован)\w*|\d[\d\s]*(?:₽|руб(?:л(?:ь|я|ей))?|тенге|₸|\$|€))/iu
+};
+function sourceText(input) {
+  return [input.description, ...input.answers.map(answer => answer.answer),
+    ...Object.values(input.knownFields), ...Object.values(input.currentTask || {}).flatMap(value => Array.isArray(value) ? value : [value])]
+    .filter(value => typeof value === 'string').join('\n');
+}
+const unknownAnswer = /^(?:пока\s+)?(?:не знаю|не определено|не определён|не указан[оы]?|нет данных|уточняется|tbd|n\/a)[.!]?$/iu;
+function answered(input, ...keys) {
+  return input.answers.some(answer => keys.includes(answer.key) && !unknownAnswer.test(answer.answer.trim())) ||
+    keys.some(key => Object.hasOwn(input.knownFields, key) && String(input.knownFields[key] || '').trim() && !unknownAnswer.test(String(input.knownFields[key]).trim()));
+}
+function removeUnsupportedSensitiveFacts(task, input) {
+  const source = sourceText(input);
+  const cleaned = { ...task, missingInfo: [...task.missingInfo] };
+  const checks = [
+    ['data', ['data']],
+    ['contact', ['contact']],
+    ['estimatedDuration', ['deadline', 'estimatedDuration']]
+  ];
+  for (const [field, keys] of checks) {
+    if (cleaned[field] && !answered(input, ...keys) && !evidencePatterns[field].test(source)) {
+      cleaned[field] = '';
+      if (!cleaned.missingInfo.includes(field)) cleaned.missingInfo.push(field);
+    }
+  }
+  if (cleaned.constraints && evidencePatterns.budget.test(cleaned.constraints) && !answered(input, 'budget', 'constraints') && !evidencePatterns.budget.test(source)) {
+    cleaned.constraints = cleaned.constraints.split(/(?<=[.!?;])\s+|\n+/).filter(part => !evidencePatterns.budget.test(part)).join(' ').trim();
+    if (!cleaned.missingInfo.includes('budget')) cleaned.missingInfo.push('budget');
+  }
+  return cleaned;
 }
 
 export function createAIService({ apiKey = process.env.OPENAI_API_KEY, model = process.env.OPENAI_MODEL || 'gpt-4o-mini', fetchImpl = fetch, timeoutMs = 45000 } = {}) {
