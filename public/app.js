@@ -1,4 +1,4 @@
-﻿/* UI only. API contract is described in docs/api-contract.md. */
+/* UI only. API contract is described in docs/api-contract.md. */
 (() => {
   'use strict';
   const api = window.platformApi;
@@ -94,86 +94,14 @@
       <article class="card preview-card"><div class="card-top"><span class="tag">${h(draft.category || 'Направление')}</span><span class="ready">${rating ? rating.total + '% готовности' : 'Оцениваем…'}</span></div><h3>${h(draft.title.trim() || 'Название вашей задачи')}</h3><p>${h(draft.problem.trim() || 'Здесь появится описание проблемы. Начните заполнять форму слева.')}</p><div class="company"><span class="company-icon">${h((draft.company || 'М').charAt(0))}</span>${h(draft.company || 'Ваша компания')}</div><div class="card-bottom"><span>${h(draft.deadline || 'Срок обсуждается')}</span><span class="tag">Предпросмотр</span></div></article>
       <div class="preview-outcome"><span class="eyebrow muted">Ожидаемый результат</span><p>${h(draft.outcome.trim() || 'Что получит бизнес после выполнения задачи?')}</p></div>`;
   }
-  async function createPage(step, ticket) {
-    if (state.role !== 'business') { app.innerHTML = empty('Создание задач доступно бизнесу', 'Для демонстрации выберите роль «Бизнес» в шапке.'); return; }
-    if (!state.draft) state.draft = await api.getDraft() || { problem: '', title: '', company: api.meta.mode === 'demo' ? 'Кофейня «Зёрна»' : '', users: '', contact: '', need: '', interactionFormat: '', category: 'Аналитика', outcome: '', success: '', data: '', deadline: '', constraints: '' };
-    if (ticket !== state.ticket) return;
-    const d = state.draft;
-    if (step > 1 && !d.problem.trim()) { go('create/1'); return; }
-    if (step === 2 && !state.questions.length) state.questions = await api.getQuestions(d.problem);
-    if (ticket !== state.ticket) return;
-    const heading = step === 1 ? 'Всё начинается с вашей задачи' : step === 2 ? 'Добавим немного конкретики' : 'Проверьте карточку перед публикацией';
-    const subtitle = step === 1 ? 'Расскажите о потребности своими словами. Мы поможем превратить её в понятную задачу.' : step === 2 ? 'Ответы помогут командам понять контекст и предложить подходящее решение.' : 'Вы можете изменить любое поле. Чем понятнее задача, тем проще найти свою команду.';
-    app.innerHTML = `<a class="back" href="#catalog">← В каталог</a><div class="intro"><div class="eyebrow muted">Новая задача</div><h1 class="page-title" style="margin-top:12px">${heading}</h1><p class="muted">${subtitle}</p></div>${steps(step)}<div class="layout"><form id="draft-form" class="panel"><div class="editor-toolbar"><span class="editor-label">Черновик задачи</span><span id="draft-save-status" class="save-status" role="status" aria-live="polite"></span></div>${step === 1 ? `${field('problem', 'Какую проблему вы хотите решить?', d.problem, { area: true, required: true, placeholder: 'Например: у нас небольшая кофейня. Хотим прогнозировать спрос на выпечку, чтобы меньше списывать продукты.', hint: 'Опишите текущую ситуацию, кого она затрагивает и что хотелось бы изменить.' })}<div class="notice">Не нужно готовить техническое задание. Начните с описания — дальше система задаст уточняющие вопросы.</div>` : step === 2 ? state.questions.map((q, i) => `<div><h3 class="subheading"><span class="number">${i + 1}</span>Вопрос ${i + 1}</h3>${field(q.key, q.label, d[q.key], { area: q.key !== 'deadline', placeholder: q.placeholder })}</div>`).join('') + '<p class="muted">Если ответа пока нет, оставьте поле пустым. Недостающие сведения будут отмечены в рейтинге.</p>' : `${field('title', 'Название задачи', d.title, { required: true, max: 110, placeholder: 'Краткое и конкретное название' })}<div class="two">${field('company', 'Компания', d.company, { required: true, max: 100 })}${categoryField(d.category)}</div>${field('problem', 'Контекст и проблема', d.problem, { area: true, required: true })}${field('need', 'Потребность бизнеса', d.need, { area: true, placeholder: 'Что нужно изменить или улучшить в работе бизнеса?' })}${field('outcome', 'Ожидаемый результат', d.outcome, { area: true })}${field('success', 'Критерии успеха', d.success, { area: true })}${field('data', 'Данные и материалы', d.data, { area: true })}${field('users', 'Для кого создаётся решение', d.users, { area: true })}${field('contact', 'Контакт бизнеса', d.contact, { placeholder: 'Email, телефон или Telegram' })}${field('interactionFormat', 'Формат взаимодействия', d.interactionFormat, { area: true, placeholder: 'Например: онлайн-встреча раз в неделю, обратная связь в Telegram' })}${field('deadline', 'Срок выполнения', d.deadline)}${field('constraints', 'Условия и ограничения', d.constraints, { area: true })}<label class="check-label"><input type="checkbox" name="confirmed" required>Я проверил(а) карточку и подтверждаю публикацию в общем каталоге.</label>`}<div class="actions">${step > 1 ? `<button type="button" class="btn secondary" id="previous">← Назад</button>` : ''}<button class="btn" type="submit">${step === 1 ? 'Уточнить задачу' : step === 2 ? 'Сформировать карточку' : 'Подтвердить и опубликовать'} <span aria-hidden="true">→</span></button><button type="button" class="btn secondary" id="save-draft">Сохранить сейчас</button></div></form><aside class="editor-sidebar"><div class="panel preview-panel" id="draft-preview"></div><div class="panel" id="rating-panel"><div class="loading">Оцениваем полноту карточки…</div></div></aside></div>`;
-    const form = document.querySelector('#draft-form');
-    const capture = () => { for (const [key, value] of new FormData(form)) if (key !== 'confirmed') d[key] = String(value); };
-    let ratingTicket = 0;
-    let latestRating = null;
-    let debounce;
-    let submitting = false;
-    const preview = () => { if (ticket === state.ticket) document.querySelector('#draft-preview').innerHTML = draftPreview(d, latestRating); };
-    const refreshRating = async () => {
-      const current = ++ratingTicket;
-      const rating = await api.rateTask({ ...d });
-      if (ticket === state.ticket && current === ratingTicket) {
-        latestRating = rating;
-        document.querySelector('#rating-panel').innerHTML = ratingPanel(rating, step === 3);
-        preview();
-      }
-    };
-    updateSaveStatus(autosave.status);
-    preview();
-    document.querySelector('#rating-panel').addEventListener('click', event => {
-      const button = event.target.closest('[data-focus-field]');
-      if (!button) return;
-      const target = form.elements.namedItem(button.dataset.focusField);
-      if (target) { target.focus(); target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-      else if (step !== 3) { go('create/3'); }
-    });
-    form.addEventListener('input', event => {
-      if (submitting || event.target.name === 'confirmed') return;
-      capture();
-      if (form.elements.namedItem('confirmed')) form.elements.namedItem('confirmed').checked = false;
-      autosave.update(d);
-      ratingTicket += 1;
-      latestRating = null;
-      preview();
-      clearTimeout(debounce);
-      debounce = setTimeout(() => refreshRating().catch(error => toast(error.message)), 250);
-    });
-    document.querySelector('#save-draft').onclick = event => action(event.currentTarget, async () => {
-      capture(); autosave.update(d); await autosave.flush();
-      toast(api.meta.persistent ? 'Черновик сохранён' : 'Черновик сохранён до закрытия страницы');
-    });
-    if (step > 1) document.querySelector('#previous').onclick = () => { capture(); go(`create/${step - 1}`); };
-    form.addEventListener('submit', event => {
-      event.preventDefault();
-      if (submitting) return;
-      capture();
-      action(event.submitter, async () => {
-        submitting = true;
-        form.inert = true;
-        try {
-        if (!d.problem.trim()) throw new Error('Добавьте описание проблемы.');
-        if (step === 1) { state.questions = await api.getQuestions(d.problem); autosave.update(d); await autosave.flush(); go('create/2'); }
-        else if (step === 2) { if (!d.title) d.title = d.problem.split(/[.!?\n]/)[0].slice(0, 100); autosave.update(d); await autosave.flush(); go('create/3'); }
-        else {
-          if (!d.title.trim() || !d.company.trim()) throw new Error('Укажите название задачи и компанию.');
-          clearTimeout(debounce); await autosave.flush();
-          const task = await api.publishTask({ ...d }); autosave.reset(); state.draft = null; state.questions = []; go(`published/${encodeURIComponent(task.id)}`);
-        }
-        } finally { submitting = false; form.inert = false; }
-      });
-    });
-    await refreshRating();
-  }
+  async function createPage(step, ticket) { return aiFlow.render(step, ticket); }
   function published(task) {
     app.innerHTML = `<div class="intro"><div class="eyebrow muted">Готово к новым решениям</div><h1 class="page-title" style="margin-top:16px">Ваша задача уже в каталоге</h1><p class="muted">Команды могут изучить карточку и предложить свой подход. Решение о сотрудничестве остаётся за вами.</p></div>${steps(4)}<div class="layout"><div class="panel"><span class="tag">Опубликована</span><h2 style="margin-top:20px">${h(task.title)}</h2><p class="muted">${h(task.company)} · ${h(task.category)}</p><div class="notice">Рейтинг готовности: <strong>${task.rating.total} из 100</strong>. Карточки в каталоге упорядочены по убыванию рейтинга.</div><div class="actions"><a class="btn" href="#task/${encodeURIComponent(task.id)}">Посмотреть задачу ↗</a><a class="btn secondary" href="#workspace">Мой кабинет</a></div></div><aside class="panel">${ratingPanel(task.rating)}</aside></div>`;
   }
   function taskPage(task, offers) {
     const own = state.role === 'business' && task.ownerId === 'business-1';
     const myOffers = offers.filter(o => o.teamId === currentTeam().id);
-    app.innerHTML = `<a class="back" href="#catalog">← Все задачи</a><div class="status-line"><span class="tag">${h(task.category)}</span><span class="tag">${h(taskStatus[task.status])}</span></div><h1 class="page-title">${h(task.title)}</h1><p class="muted">${h(task.company)} · ${h(task.deadline || 'Срок обсуждается')}</p><div class="layout"><div class="panel detail-section">${[['problem', 'Контекст и проблема'], ['need', 'Потребность бизнеса'], ['outcome', 'Ожидаемый результат'], ['success', 'Критерии успеха'], ['data', 'Данные и материалы'], ['constraints', 'Условия и ограничения'], ['users', 'Для кого создаётся решение'], ['contact', 'Контакт бизнеса'], ['interactionFormat', 'Формат взаимодействия']].map(([key, label]) => `<h3>${label}</h3><p>${h(task[key] || 'Пока не указано — можно уточнить у бизнеса в предложении.')}</p>`).join('')}${own ? `<div class="actions"><a class="btn" href="#offers/${encodeURIComponent(task.id)}">Сравнить предложения · ${offers.length} →</a></div>` : ''}</div><aside><div class="panel">${ratingPanel(task.rating)}</div><div class="panel project" id="proposal-panel">${state.role !== 'student' ? '<h3 class="subheading">Свежий взгляд на вашу задачу</h3><p class="muted">Любая студенческая команда может предложить решение. Для проверки этого сценария переключите демо-роль на «Команда».</p>' : task.status !== 'published' ? '<h3>Приём предложений завершён</h3><p class="muted">Посмотрите другие открытые задачи в каталоге.</p>' : `<h3 class="subheading">Предложите своё решение</h3><p class="muted">Расскажите о команде и подходе к задаче. Можно отправить несколько вариантов — число откликов не ограничено.</p>${myOffers.length ? `<div class="notice">Ваших предложений: ${myOffers.length}. Их статусы доступны <a class="text-link" href="#workspace">в кабинете</a>. Можно отправить ещё одно.</div>` : ''}<form id="offer-form">${field('team', 'Название команды', currentTeam().name, { required: true, max: 80, hint: 'Команду можно переключить в шапке страницы.' })}${field('members', 'Состав и навыки', '', { required: true, placeholder: '3 участника · Python, дизайн, аналитика' })}${field('approach', 'Ваш подход к задаче', '', { area: true, required: true, placeholder: 'С чего начнёте и какой результат предложите?' })}${field('plan', 'План работы по этапам', '', { area: true, required: true, placeholder: 'Например: интервью → прототип → тестирование → демонстрация' })}${field('prototypeUrl', 'Ссылка на прототип (необязательно)', '', { type: 'url', placeholder: 'https://…' })}${field('duration', 'Предлагаемый срок', '', { required: true, placeholder: '4 недели' })}${field('contact', 'Контактный email', '', { required: true, type: 'email' })}<button class="btn wide" type="submit">Отправить предложение ↗</button></form>`}</div></aside></div>`;
+    app.innerHTML = `<a class="back" href="#catalog">← Все задачи</a><div class="status-line"><span class="tag">${h(task.category)}</span><span class="tag">${h(taskStatus[task.status])}</span></div><h1 class="page-title">${h(task.title)}</h1><p class="muted">${h(task.company)} · ${h(task.deadline || 'Срок обсуждается')}</p><div class="layout"><div class="panel detail-section">${[['problem', 'Контекст и проблема'], ['need', 'Цель и потребность бизнеса'], ['requirements', 'Функциональные требования'], ['outcome', 'Ожидаемый результат'], ['success', 'Критерии успеха'], ['data', 'Данные и материалы'], ['constraints', 'Условия и ограничения'], ['users', 'Для кого создаётся решение'], ['contact', 'Контакт бизнеса'], ['interactionFormat', 'Формат взаимодействия']].map(([key, label]) => `<h3>${label}</h3><p>${h(task[key] || 'Пока не указано — можно уточнить у бизнеса в предложении.')}</p>`).join('')}<div class="task-ai-metadata">${window.MostAIComponents.skillTags(task, h)}<div class="status-line">${task.difficulty ? `<span class="tag">Сложность: ${h(task.difficulty)}</span>` : ''}${task.recommendedTeamSize ? `<span class="tag">Команда: ${h(task.recommendedTeamSize)} чел.</span>` : ''}</div>${window.MostAIComponents.notes(task, h)}</div>${own ? `<div class="actions"><a class="btn" href="#offers/${encodeURIComponent(task.id)}">Сравнить предложения · ${offers.length} →</a></div>` : ''}</div><aside><div class="panel">${ratingPanel(task.rating)}</div><div class="panel project" id="proposal-panel">${state.role !== 'student' ? '<h3 class="subheading">Свежий взгляд на вашу задачу</h3><p class="muted">Любая студенческая команда может предложить решение. Для проверки этого сценария переключите демо-роль на «Команда».</p>' : task.status !== 'published' ? '<h3>Приём предложений завершён</h3><p class="muted">Посмотрите другие открытые задачи в каталоге.</p>' : `<h3 class="subheading">Предложите своё решение</h3><p class="muted">Расскажите о команде и подходе к задаче. Можно отправить несколько вариантов — число откликов не ограничено.</p>${myOffers.length ? `<div class="notice">Ваших предложений: ${myOffers.length}. Их статусы доступны <a class="text-link" href="#workspace">в кабинете</a>. Можно отправить ещё одно.</div>` : ''}<form id="offer-form">${field('team', 'Название команды', currentTeam().name, { required: true, max: 80, hint: 'Команду можно переключить в шапке страницы.' })}${field('members', 'Состав и навыки', '', { required: true, placeholder: '3 участника · Python, дизайн, аналитика' })}${field('approach', 'Ваш подход к задаче', '', { area: true, required: true, placeholder: 'С чего начнёте и какой результат предложите?' })}${field('plan', 'План работы по этапам', '', { area: true, required: true, placeholder: 'Например: интервью → прототип → тестирование → демонстрация' })}${field('prototypeUrl', 'Ссылка на прототип (необязательно)', '', { type: 'url', placeholder: 'https://…' })}${field('duration', 'Предлагаемый срок', '', { required: true, placeholder: '4 недели' })}${field('contact', 'Контактный email', '', { required: true, type: 'email' })}<button class="btn wide" type="submit">Отправить предложение ↗</button></form>`}</div></aside></div>`;
     const teamField = document.querySelector('#offer-form [name="team"]');
     if (teamField) teamField.readOnly = true;
     document.querySelector('#offer-form')?.addEventListener('submit', event => {
@@ -254,7 +182,7 @@
         else {
           await autosave.flush();
           const draft = await api.openDraft(decodeURIComponent(param || ''));
-          if (ticket === state.ticket) { state.draft = draft; state.questions = []; go('create/3'); }
+          if (ticket === state.ticket) { state.draft = draft; state.questions = []; const session = window.MostAIComponents.session(draft); go(session.questions.length ? 'create/2' : draft.aiSession && !session.generated ? 'create/1' : 'create/3'); }
         }
       }
       else if (page === 'create') await createPage(Math.max(1, Math.min(3, Number(param) || 1)), ticket);
@@ -267,6 +195,7 @@
       if (ticket === state.ticket) { app.innerHTML = `<div class="empty"><h2>Не удалось открыть страницу</h2><p class="muted">${h(error.message)}</p><button id="retry" class="btn">Повторить</button> <a class="btn secondary" href="#catalog">В каталог</a></div>`; document.querySelector('#retry').onclick = render; }
     } finally { if (ticket === state.ticket) app.removeAttribute('aria-busy'); }
   }
+  const aiFlow = window.createAIFlow({ api, app, state, autosave, h, go, toast, field, categoryField, ratingPanel, draftPreview, confirmAction, updateSaveStatus });
   roleSelect.addEventListener('change', () => { state.role = roleSelect.value; toast(state.role === 'business' ? 'Демо-роль: представитель бизнеса' : `Демо-роль: команда ${currentTeam().name}`); render(); });
   document.querySelector('#team-name').addEventListener('change', event => {
     try { window.platformTeam.set(event.target.value); toast(`Активная команда: ${currentTeam().name}`); render(); }

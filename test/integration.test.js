@@ -1,4 +1,4 @@
-﻿import { test } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -173,7 +173,7 @@ test('catalog filters readiness boundaries together with topic and search', () =
   const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   const instrumented = source.replace(/  render\(\);\s*\}\)\(\);\s*$/, '  window.testCatalog = { state, renderCards };\n})();');
   assert.notEqual(instrumented, source);
-  const window = { platformApi: { meta: { persistent: true } }, createDraftAutosave: () => ({}), addEventListener() {} };
+  const window = { platformApi: { meta: { persistent: true } }, createDraftAutosave: () => ({}), createAIFlow: () => ({}), addEventListener() {} };
   runInNewContext(instrumented, { window, document: { querySelector: node, addEventListener() {} } });
   const { state, renderCards } = window.testCatalog;
   const tasks = [0, 39, 40, 69, 70, 89, 90, 100].map(score => ({ id: 'task-' + score, title: 'Задача ' + score, company: 'Компания',

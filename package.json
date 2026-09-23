@@ -1,14 +1,12 @@
 {
-    "name":  "business-tasks-mvp",
-    "version":  "1.0.0",
-    "private":  true,
-    "type":  "module",
-    "engines":  {
-                    "node":  "\u003e=22"
-                },
-    "scripts":  {
-                    "start":  "node src/server.js",
-                    "test":  "node --test",
-                    "lint":  "node --check src/rating.js \u0026\u0026 node --check src/presentation.js \u0026\u0026 node --check src/store.js \u0026\u0026 node --check src/server.js \u0026\u0026 node --check public/app.js \u0026\u0026 node --check public/api-client.js \u0026\u0026 node --check public/demo-api.js \u0026\u0026 node --check public/draft-autosave.js \u0026\u0026 node --check public/team-session.js"
-                }
+  "name": "business-tasks-mvp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.9" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "test": "node --test",
+    "lint": "node --check src/rating.js && node --check src/presentation.js && node --check src/store.js && node --check src/server.js && node --check src/ai.js && node --check public/app.js && node --check public/api-client.js && node --check public/demo-api.js && node --check public/draft-autosave.js && node --check public/team-session.js && node --check public/ai-components.js && node --check public/ai-flow.js && node --check public/demo-ai.js"
+  }
 }
