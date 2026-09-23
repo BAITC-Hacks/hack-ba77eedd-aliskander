@@ -1,4 +1,4 @@
-﻿import { mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { calculateRating, fields } from './rating.js';
@@ -66,7 +66,7 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
     });
     return task(taskId);
   }
-  const taskKeys = ['title', 'company', 'category', 'deadline', 'need', 'interactionFormat', ...Object.keys(fields)];
+  const taskKeys = ['title', 'company', 'category', 'deadline', 'need', 'interactionFormat', 'requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'aiSession', 'aiAssumptions', 'aiMissingInfo', ...Object.keys(fields)];
   return {
     selectProposals,
     // Keep the earlier API compatible; the UI now selects individual proposal IDs.

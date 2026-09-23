@@ -1,9 +1,10 @@
-﻿import { createServer } from 'node:http';
+import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { createStore, ApiError } from './store.js';
 import { describeRating, clarificationQuestions } from './presentation.js';
+import { createAIService } from './ai.js';
 import { createSampleData } from './sample-data.js';
 
 const publicDir = new URL('../public/', import.meta.url);
@@ -19,7 +20,7 @@ async function body(request) {
   catch { throw new ApiError(400, 'Некорректный JSON'); }
 }
 
-export function createApp(store) {
+export function createApp(store, ai = createAIService()) {
   return createServer(async (request, response) => {
     function json(status, value) {
       response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -29,11 +30,13 @@ export function createApp(store) {
       const url = new URL(request.url, 'http://localhost');
       const path = url.pathname;
       const method = request.method;
-      if (method === 'GET' && ['/', '/index.html', '/demo.html', '/app.js', '/api-client.js', '/team-session.js', '/demo-api.js', '/draft-autosave.js', '/styles.css'].includes(path)) {
+      if (method === 'GET' && ['/', '/index.html', '/demo.html', '/app.js', '/api-client.js', '/ai-flow.js', '/ai-components.js', '/demo-ai.js', '/team-session.js', '/demo-api.js', '/draft-autosave.js', '/styles.css'].includes(path)) {
         const file = path === '/' ? 'index.html' : path.slice(1);
         response.writeHead(200, { 'Content-Type': file.endsWith('.js') ? 'text/javascript; charset=utf-8' : file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8' });
         return response.end(readFileSync(new URL(file, publicDir)));
       }
+      if (method === 'GET' && path === '/api/ai/status') return json(200, ai.status());
+      if (method === 'POST' && path === '/api/ai/interview') return json(200, await ai.turn(await body(request)));
       if (method === 'POST' && ['/api/rating', '/api/questions'].includes(path)) {
         const input = await body(request);
         if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApiError(400, 'Ожидается JSON-объект');

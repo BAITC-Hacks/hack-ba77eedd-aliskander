@@ -1,4 +1,4 @@
-﻿/* Adapter for the team's existing Node HTTP API. No rating weights are duplicated here. */
+/* Adapter for the team's existing Node HTTP API. No rating weights are duplicated here. */
 (() => {
   'use strict';
   const currentTeam = () => window.platformTeam?.current || { id: 'team-orbit', name: 'Orbit' };
@@ -8,7 +8,9 @@
   const remember = id => { draftId = id; try { if (id) localStorage.setItem(draftKey, id); else localStorage.removeItem(draftKey); } catch (_) {} };
   const route = id => encodeURIComponent(id);
   const keys = { context: 'problem', expectedResult: 'outcome', successCriteria: 'success' };
-  const toServer = d => ({ title: d.title || '', company: d.company || '', category: d.category || '', deadline: d.deadline || '',
+  const extraKeys = ['requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'aiSession', 'aiAssumptions', 'aiMissingInfo'];
+  const extras = value => Object.fromEntries(extraKeys.map(key => [key, value[key] || '']));
+  const toServer = d => ({ ...extras(d), title: d.title || '', company: d.company || '', category: d.category || '', deadline: d.deadline || '',
     context: d.problem || '', expectedResult: d.outcome || '', successCriteria: d.success || '', data: d.data || '',
     need: d.need || '', interactionFormat: d.interactionFormat || '', constraints: d.constraints || '', users: d.users || '', contact: d.contact || '' });
   async function request(path, method = 'GET', data) {
@@ -24,7 +26,7 @@
     breakdown: (raw.breakdown || []).map(c => ({ ...c, key: keys[c.key] || c.key })),
     hints: (raw.breakdown || []).filter(c => c.points < c.max).map(c => c.hint)
   });
-  const task = (raw, offerCount = 0) => ({ id: raw.id, title: raw.title || 'Без названия', company: raw.company || 'Бизнес',
+  const task = (raw, offerCount = 0) => ({ ...extras(raw), id: raw.id, title: raw.title || 'Без названия', company: raw.company || 'Бизнес',
     category: raw.category || 'Исследования', deadline: raw.deadline || '', problem: raw.context || '',
     outcome: raw.expectedResult || '', success: raw.successCriteria || '', data: raw.data || '',
     need: raw.need || '', interactionFormat: raw.interactionFormat || '', constraints: raw.constraints || '', users: raw.users || '', contact: raw.contact || '',
@@ -43,6 +45,8 @@
   }
   window.platformApi = {
     meta: { mode: 'live', persistent: true },
+    getAIStatus: () => request('/ai/status'),
+    aiTurn: input => request('/ai/interview', 'POST', input),
     listTasks: async () => (await request('/tasks')).map(raw => task(raw)),
     getTask: async id => task(await request('/tasks/' + route(id))),
     getQuestions: async description => (await request('/questions', 'POST', { context: description })).map(q => ({ ...q, key: keys[q.key] || q.key })),
