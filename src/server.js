@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { createStore, ApiError } from './store.js';
 import { describeRating, clarificationQuestions } from './presentation.js';
+import { createSampleData } from './sample-data.js';
 
 const publicDir = new URL('../public/', import.meta.url);
 async function body(request) {
@@ -76,7 +77,7 @@ export function createApp(store) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const store = createStore(process.env.DATA_FILE || fileURLToPath(new URL('../data/db.json', import.meta.url)));
+  const store = createStore(process.env.DATA_FILE || fileURLToPath(new URL('../data/db.json', import.meta.url)), createSampleData());
   const port = Number(process.env.PORT || 3000);
   createApp(store).listen(port, '127.0.0.1', () => console.log(`Demo: http://localhost:${port}`));
 }
