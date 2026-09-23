@@ -150,3 +150,16 @@ test('teaching case is repeatable, links working prototypes and follows the thre
   assert.equal((await api.getProfile()).completedTasks.length,0);
   await assert.rejects(api.reviewStage(progress[0].id,true,''));
 });
+
+ test('readiness rejects filler consistently in server and browser and explains missing points',()=>{
+   const window={};runInNewContext(readFileSync(new URL('../public/readiness-engine.cjs',import.meta.url),'utf8'),{window});
+   for(const text of ['а','Да','а а а','АаАаАа','абабаб','test!!!','тест???','нет данных','Неизвестно','12345','qwerty','тест тест тест','---']) {
+     const input=Object.fromEntries(Object.keys(readiness.fields).map(key=>[key,text]));
+     assert.equal(readiness.describe(input).score,0,text);
+     assert.equal(window.MostReadiness.describe(input).score,0,text);
+     assert.ok(readiness.describe(input).breakdown.every(item=>item.hint.length>20));
+   }
+   for(const text of ['CSV','CRM','Клиенты','Нет ограничений','Бюджет отсутствует','+7 777 123 45 67','owner@example.com']) assert.equal(readiness.filled(text),true,text);
+   assert.match(readiness.describe({context:'а'}).breakdown[0].hint,/минимум 3/);
+   assert.equal(readiness.describe(complete).score,100);
+ });
