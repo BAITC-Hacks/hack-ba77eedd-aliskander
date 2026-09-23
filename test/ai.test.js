@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { runInNewContext } from 'node:vm';
-import { createAIService, validateInput, validateOutput, responseSchema } from '../src/ai.js';
+import { createAIService, validateInput, validateOutput, responseSchema, readinessSchema } from '../src/ai.js';
 import { createStore } from '../src/store.js';
 import { createApp } from '../src/server.js';
 
@@ -52,6 +52,14 @@ test('AI output rejects repeated questions, fabricated schema shapes and invalid
   assert.equal(validateOutput(ready, input).task.title, 'Бот записи');
 });
 
+test('third interview answer is accepted when AI returns more follow-ups than slots left', () => {
+  const answers = ['goal', 'requirements', 'successCriteria'].map(key => ({ key, question: 'Уточните ' + key, answer: 'Подтверждённый ответ' }));
+  const input = validateInput({ action: 'answer', description, answers });
+  const output = { ...interview, questions: ['data', 'constraints', 'contact'].map(question) };
+  const validated = validateOutput(output, input);
+  assert.deepEqual(validated.questions.map(item => item.key), ['data', 'constraints']);
+});
+
 test('AI handles missing configuration, provider errors, refusal, invalid JSON and timeout', async () => {
   const input = { action: 'analyze', description };
   const disabled = createAIService({ apiKey: '' });
@@ -66,6 +74,32 @@ test('AI handles missing configuration, provider errors, refusal, invalid JSON a
     [async () => ({ ok: true, json: async () => null }), 502],
     [async () => ({ ok: true, json: async () => ({ status: 'incomplete' }) }), 502]
   ]) await assert.rejects(createAIService({ apiKey: 'test-secret', fetchImpl }).turn(input), error => error.status === status && !error.message.includes('test-secret'));
+});
+
+test('AI readiness assessment scores the meaning of text and validates bounded partial points', async () => {
+  let sent;
+  const criteria = [
+    { key: 'context', label: 'Контекст', max: 20, text: 'Что-то нужно улучшить' },
+    { key: 'expectedResult', label: 'Результат', max: 15, text: 'Рабочий прототип личного кабинета' }
+  ];
+  const service = createAIService({ apiKey: 'test', fetchImpl: async (_, options) => {
+    sent = JSON.parse(options.body);
+    return response({ criteria: [
+      { key: 'context', points: 4, hint: 'Уточните текущую проблему и затронутых пользователей.' },
+      { key: 'expectedResult', points: 12, hint: 'Перечислите обязательные сценарии прототипа.' }
+    ] });
+  } });
+  const result = await service.assessReadiness({ context: criteria[0].text }, criteria);
+  assert.deepEqual(result.map(item => item.points), [4, 12]);
+  assert.deepEqual(sent.text.format.schema, readinessSchema);
+  assert.match(sent.instructions, /СОДЕРЖАНИЮ/);
+  assert.deepEqual(JSON.parse(sent.input).criteria, criteria);
+
+  const invalid = createAIService({ apiKey: 'test', fetchImpl: async () => response({ criteria: [
+    { key: 'context', points: 21, hint: 'Подсказка' },
+    { key: 'expectedResult', points: 15, hint: 'Подсказка' }
+  ] }) });
+  await assert.rejects(invalid.assessReadiness({}, criteria), error => error.status === 502);
 });
 
 test('AI HTTP endpoints, regeneration context and draft persistence never publish automatically', async t => {
