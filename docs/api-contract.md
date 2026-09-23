@@ -110,7 +110,7 @@
 
 `POST /api/match` считает `{student, task}` по весам 50/20/10/10/10;
 `POST /api/match/explain` добавляет только AI-текст, не меняя процент.
-`GET / PUT /api/students/:id/profile` читает и сохраняет профиль представителя команды.
+`GET / PUT /api/students/:id/profile` читает и сохраняет собственный профиль команды со списком участников.
 Недельная нагрузка задачи хранится в `requiredHours` строкой для совместимости с редактором.
 
 Методы адаптера: `getProfile()`, `saveProfile(student)`, `matchTask(student, task, explain=false)`.

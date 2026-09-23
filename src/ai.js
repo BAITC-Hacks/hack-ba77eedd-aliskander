@@ -113,7 +113,7 @@ export function createAIService({ apiKey = process.env.OPENAI_API_KEY, model = p
     status() { return { configured: Boolean(apiKey), provider: 'OpenAI' }; },
     async turn(raw) {
       const input = validateInput(raw);
-const remaining = 5 - input.answers.length;
+      const remaining = 5 - input.answers.length;
       const turnLimit = input.action === 'analyze'
         ? 'This is the initial analysis: ask no more than five questions.'
         : remaining === 0
