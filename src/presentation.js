@@ -1,5 +1,5 @@
 ﻿// Expose the team's existing rating without duplicating its weights in the browser.
-import { calculateRating, fields } from './rating.js';
+import { calculateRating, fields, levelForScore } from './rating.js';
 const extraFields = { need: ['Потребность бизнеса'], interactionFormat: ['Формат взаимодействия'] };
 const questions = {
   context: 'Какая проблема возникает сейчас и кого она затрагивает?',
@@ -18,6 +18,29 @@ export function describeRating(input) {
     hint: questions[key]
   })), missingDetails: Object.entries(extraFields).filter(([key]) => !String(input[key] || '').trim())
     .map(([key, [label]]) => ({ key, label, hint: questions[key] })) };
+}
+export async function describeAIRating(input, ai) {
+  // Keep the local/demo installation usable without a configured provider. In a
+  // configured environment the score below is always replaced by the AI review.
+  if (!ai.status().configured) return { ...describeRating(input), assessmentSource: 'fallback' };
+  const criteria = Object.entries(fields).map(([key, [label, max]]) => ({
+    key, label, max, text: typeof input[key] === 'string' ? input[key].trim() : ''
+  }));
+  const assessed = await ai.assessReadiness(input, criteria);
+  const breakdown = criteria.map(criterion => {
+    const assessment = assessed.find(item => item.key === criterion.key);
+    const { text: _text, ...publicCriterion } = criterion;
+    return { ...publicCriterion, points: assessment.points, hint: assessment.hint };
+  });
+  const score = breakdown.reduce((total, item) => total + item.points, 0);
+  return {
+    score, level: levelForScore(score),
+    missingFields: breakdown.filter(item => item.points < item.max).map(item => item.label),
+    breakdown,
+    assessmentSource: 'OpenAI',
+    missingDetails: Object.entries(extraFields).filter(([key]) => !String(input[key] || '').trim())
+      .map(([key, [label]]) => ({ key, label, hint: questions[key] }))
+  };
 }
 export function clarificationQuestions(input) {
   const all = { ...fields, ...extraFields };
