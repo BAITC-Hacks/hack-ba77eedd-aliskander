@@ -9,6 +9,6 @@
     "scripts":  {
                     "start":  "node src/server.js",
                     "test":  "node --test",
-                    "lint":  "node --check src/rating.js \u0026\u0026 node --check src/presentation.js \u0026\u0026 node --check src/store.js \u0026\u0026 node --check src/server.js \u0026\u0026 node --check public/app.js \u0026\u0026 node --check public/api-client.js \u0026\u0026 node --check public/demo-api.js \u0026\u0026 node --check public/draft-autosave.js \u0026\u0026 node --check public/team-session.js"
+                    "lint":  "node --check src/rating.js \u0026\u0026 node --check src/presentation.js \u0026\u0026 node --check src/sample-data.js \u0026\u0026 node --check src/store.js \u0026\u0026 node --check src/server.js \u0026\u0026 node --check public/app.js \u0026\u0026 node --check public/api-client.js \u0026\u0026 node --check public/demo-api.js \u0026\u0026 node --check public/draft-autosave.js \u0026\u0026 node --check public/team-session.js"
                 }
 }
