@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Бизнес-задачи — MVP</title>
+<style>
+  body { font: 16px system-ui; max-width: 1100px; margin: 32px auto; padding: 0 20px; background: #f5f7fa; color: #172c40; }
+  section, article { background: white; padding: 20px; margin: 16px 0; border: 1px solid #dce3eb; border-radius: 10px; }
+  label { display: block; margin: 12px 0; } input, textarea, select { box-sizing: border-box; width: 100%; padding: 8px; font: inherit; }
+  button { padding: 9px 16px; margin: 6px 8px 6px 0; cursor: pointer; } .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  #message { position: sticky; top: 0; background: #fff3c4; padding: 12px; white-space: pre-wrap; } #message:empty { display: none; }
+  p { white-space: pre-wrap; overflow-wrap: anywhere; } @media(max-width: 750px) { .columns { grid-template-columns: 1fr; } }
+</style>
+<h1>Бизнес-задачи</h1>
+<p>Demo: бизнес создает и публикует задачи, команды предлагают решения, бизнес вручную выбирает команду.</p>
+<div id="message" role="status"></div>
+<div class="columns">
+<section>
+  <h2>Кабинет бизнеса</h2>
+  <label>Сохраненные задачи<select id="saved"><option value="">Новая задача</option></select></label>
+  <form id="task-form">
+    <label>Название<input name="title"></label>
+    <label>Контекст / проблема<textarea name="context"></textarea></label>
+    <label>Для кого<input name="users"></label>
+    <label>Данные и материалы<textarea name="data"></textarea></label>
+    <label>Ожидаемый результат<textarea name="expectedResult"></textarea></label>
+    <label>Критерии успеха<textarea name="successCriteria"></textarea></label>
+    <label>Ограничения<textarea name="constraints"></textarea></label>
+    <label>Контакт<input name="contact"></label>
+    <button>Сохранить</button><button type="button" id="publish" disabled>Опубликовать</button>
+  </form>
+  <p id="rating">Сохраните задачу для расчета рейтинга.</p>
+  <h3>Отклики на выбранную задачу</h3><div id="proposals"></div>
+</section>
+<section>
+  <h2>Каталог опубликованных задач</h2><button id="refresh">Обновить</button><div id="catalog"></div>
+  <h2>Предложение команды</h2>
+  <form id="proposal-form">
+    <label>Задача<select name="taskId" id="proposal-task" required></select></label>
+    <label>Название команды<input name="teamName" required></label>
+    <label>Идея<textarea name="idea" required></textarea></label>
+    <label>План<textarea name="plan" required></textarea></label>
+    <label>Срок<input name="deadline" required placeholder="Например: 2 недели"></label>
+    <label>Ссылка на прототип (необязательно)<input name="prototypeUrl"></label>
+    <button>Отправить предложение</button>
+  </form>
+</section>
+</div>
+<script type="module" src="/app.js"></script>
+</html>
