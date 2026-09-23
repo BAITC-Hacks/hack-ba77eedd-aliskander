@@ -28,7 +28,7 @@ export function createApp(store) {
       const url = new URL(request.url, 'http://localhost');
       const path = url.pathname;
       const method = request.method;
-      if (method === 'GET' && ['/', '/index.html', '/demo.html', '/app.js', '/api-client.js', '/demo-api.js', '/draft-autosave.js', '/styles.css'].includes(path)) {
+      if (method === 'GET' && ['/', '/index.html', '/demo.html', '/app.js', '/api-client.js', '/team-session.js', '/demo-api.js', '/draft-autosave.js', '/styles.css'].includes(path)) {
         const file = path === '/' ? 'index.html' : path.slice(1);
         response.writeHead(200, { 'Content-Type': file.endsWith('.js') ? 'text/javascript; charset=utf-8' : file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8' });
         return response.end(readFileSync(new URL(file, publicDir)));
@@ -40,7 +40,10 @@ export function createApp(store) {
       }
       if (method === 'GET' && path === '/api/stages') return json(200, store.listStages());
       const selection = path.match(/^\/api\/tasks\/([^/]+)\/selection$/);
-      if (selection && method === 'POST') return json(200, store.selectTeams(selection[1], (await body(request))?.teamIds));
+      if (selection && method === 'POST') {
+        const input = await body(request);
+        return json(200, input && Object.hasOwn(input, 'proposalIds') ? store.selectProposals(selection[1], input.proposalIds) : store.selectTeams(selection[1], input?.teamIds));
+      }
       const stage = path.match(/^\/api\/stages\/([^/]+)\/(submit|review)$/);
       if (stage && method === 'POST') {
         const input = await body(request);

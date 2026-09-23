@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#174d40">
   <title>Мост — задачи бизнеса, решения студентов</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="team-session.js" defer></script>
   <script src="api-client.js" defer></script>
   <script src="draft-autosave.js" defer></script>
   <script src="app.js" defer></script>
@@ -14,7 +15,8 @@
   <header class="header">
     <a class="brand" href="#catalog" aria-label="Мост, главная"><span class="brand-icon">м</span>мост<span class="brand-dot">.</span></a>
     <nav aria-label="Основная навигация"><a href="#catalog" data-nav="catalog">Каталог задач</a><a href="#workspace" data-nav="workspace">Мой кабинет</a></nav>
-    <label class="role-label">Демо-режим<select id="role"><option value="business">Бизнес · Алия</option><option value="student">Команда · Orbit</option></select></label>
+    <label class="role-label">Демо-режим<select id="role"><option value="business">Бизнес · Алия</option><option value="student">Студенческая команда</option></select></label>
+    <label class="team-profile" id="team-profile" hidden>Ваша команда<input id="team-name" maxlength="80" value="Orbit" aria-label="Название активной команды"></label>
   </header>
   <main id="app" tabindex="-1"></main>
   <footer><span class="brand-small">мост.</span><span>Реальные задачи. Первый профессиональный опыт.</span><span>MVP команды · данные на сервере</span></footer>
