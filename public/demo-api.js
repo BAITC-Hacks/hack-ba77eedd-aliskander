@@ -2,6 +2,7 @@
    All methods return Promises. This file is a browser-only simulation, not a backend. */
 (() => {
   'use strict';
+  const currentTeam = () => window.platformTeam?.current || { id: 'team-orbit', name: 'Orbit' };
   const KEY = 'most-frontend-demo-v1';
   const copy = value => JSON.parse(JSON.stringify(value));
   const id = prefix => prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -15,7 +16,7 @@
   ];
   function rate(task) {
     const breakdown = criteria.map(c => ({ ...c, points: String(task[c.key] || '').trim().length >= c.min ? c.max : 0 }));
-    return { total: breakdown.reduce((n, c) => n + c.points, 0), breakdown, hints: breakdown.filter(c => !c.points).map(c => c.hint) };
+    return { missingDetails: ['need', 'interactionFormat'].filter(key => !String(task[key] || '').trim()).map(key => ({ key, label: key === 'need' ? 'Потребность бизнеса' : 'Формат взаимодействия', hint: key === 'need' ? 'Какую потребность нужно закрыть?' : 'Как будете общаться с командой?' })), total: breakdown.reduce((n, c) => n + c.points, 0), breakdown, hints: breakdown.filter(c => !c.points).map(c => c.hint) };
   }
   const base = { ownerId: 'business-1', status: 'published', success: 'Прототип проходит пять согласованных сценариев; результаты фиксируются на демонстрации.', data: 'Предоставим обезличенные данные и консультации сотрудника компании.', constraints: 'Учебный проект без оплаты. Еженедельная встреча, стек на выбор команды.', selectedTeamIds: [], selectionDone: false };
   const tasks = [
@@ -39,6 +40,19 @@
   const findTask = taskId => { const task = db.tasks.find(t => t.id === taskId); if (!task) throw new Error('Задача не найдена.'); return task; };
   const withRating = task => ({ ...task, rating: rate(task), offerCount: db.offers.filter(o => o.taskId === task.id).length });
   const asyncMethod = fn => async (...args) => { await new Promise(resolve => setTimeout(resolve, 130)); return copy(fn(...args)); };
+  function finishSelection(taskId, proposalIds) {
+    const task = findTask(taskId);
+    if (task.ownerId !== 'business-1') throw new Error('Вы можете выбирать команды только для своих задач.');
+    if (task.selectionDone) throw new Error('Выбор уже подтверждён.');
+    const offers = db.offers.filter(o => o.taskId === taskId);
+    if (proposalIds.some(id => !offers.some(o => o.id === id))) throw new Error('Предложение не найдено.');
+    const teams = new Map(offers.filter(o => proposalIds.includes(o.id)).map(o => [o.teamId, o]));
+    task.selectedTeamIds = [...teams.keys()]; task.selectionDone = true;
+    task.status = teams.size ? 'in_progress' : 'closed';
+    offers.forEach(o => { o.status = proposalIds.includes(o.id) ? 'selected' : 'declined'; });
+    for (const [teamId, offer] of teams) db.stages.push({ id: id('stage'), taskId, teamId, team: offer.team, title: 'Демонстрация рабочего прототипа', points: 100, status: 'in_progress', result: '', url: '', feedback: '' });
+    save(); return withRating(task);
+  }
   window.platformApi = {
     meta: { mode: 'demo', get persistent() { return persistent; } },
     listTasks: asyncMethod(() => db.tasks.filter(t => t.status !== 'draft').map(withRating).sort((a, b) => b.rating.total - a.rating.total)),
@@ -48,6 +62,8 @@
       const context = /сайт|запис|приложен/.test(text) ? 'Какие действия пользователь должен выполнять в готовом интерфейсе?' : /прогноз|данн|аналит/.test(text) ? 'Какие решения вы хотите принимать на основе анализа?' : 'Что команда должна передать вам в конце работы?';
       return [
         { key: 'outcome', label: context, placeholder: 'Например: дашборд с прогнозом продаж на следующую неделю' },
+        { key: 'need', label: 'Какую потребность бизнеса должно закрыть решение?', placeholder: 'Например: снизить списания продуктов' },
+        { key: 'interactionFormat', label: 'Как вы будете взаимодействовать с командой?', placeholder: 'Онлайн-встреча раз в неделю, контактное лицо' },
         { key: 'success', label: 'Как вы поймёте, что задача решена успешно?', placeholder: 'Конкретный показатель или сценарий проверки результата' },
         { key: 'data', label: 'Какие данные и материалы вы сможете предоставить?', placeholder: 'Обезличенная история продаж, доступ к макетам, интервью…' },
         { key: 'deadline', label: 'Когда нужен результат?', placeholder: 'Например: за 4 недели' },
@@ -65,28 +81,25 @@
     submitOffer: asyncMethod((taskId, data) => {
       const task = findTask(taskId);
       if (task.status !== 'published' || task.selectionDone) throw new Error('Приём предложений завершён.');
-      if (db.offers.some(o => o.taskId === taskId && o.teamId === 'team-orbit')) throw new Error('Ваша команда уже отправила предложение.');
-      const offer = { ...data, id: id('offer'), taskId, teamId: 'team-orbit', status: 'pending' };
+
+      const offer = { ...data, id: id('offer'), taskId, teamId: currentTeam().id, team: currentTeam().name, status: 'pending' };
       db.offers.push(offer); save(); return offer;
     }),
-    selectTeams: asyncMethod((taskId, teamIds) => {
-      const task = findTask(taskId);
-      if (task.ownerId !== 'business-1') throw new Error('Вы можете выбирать команды только для своих задач.');
-      if (task.selectionDone) throw new Error('Выбор уже подтверждён.');
-      const offers = db.offers.filter(o => o.taskId === taskId);
-      if (teamIds.some(teamId => !offers.some(o => o.teamId === teamId))) throw new Error('Предложение команды не найдено.');
-      task.selectedTeamIds = [...new Set(teamIds)]; task.selectionDone = true;
-      task.status = teamIds.length ? 'in_progress' : 'closed';
-      offers.forEach(o => { o.status = teamIds.includes(o.teamId) ? 'selected' : 'declined'; });
-      offers.filter(o => o.status === 'selected').forEach(o => db.stages.push({ id: id('stage'), taskId, teamId: o.teamId, team: o.team, title: 'Демонстрация рабочего прототипа', points: 100, status: 'in_progress', result: '', url: '', feedback: '' }));
-      save(); return withRating(task);
+    decideOffer: asyncMethod((offerId, status) => {
+      const offer = db.offers.find(o => o.id === offerId);
+      if (!offer || !['selected', 'declined'].includes(status)) throw new Error('Предложение или решение не найдено.');
+      const task = findTask(offer.taskId);
+      if (task.ownerId !== 'business-1' || task.selectionDone) throw new Error('Решение недоступно.');
+      offer.status = status; save(); return offer;
     }),
+    selectOffers: asyncMethod(finishSelection),
+    selectTeams: asyncMethod((taskId, teamIds) => finishSelection(taskId, db.offers.filter(o => o.taskId === taskId && teamIds.includes(o.teamId)).map(o => o.id))),
     getWorkspace: asyncMethod(role => role === 'business'
       ? { tasks: db.tasks.filter(t => t.ownerId === 'business-1').map(withRating), offers: db.offers, stages: db.stages.filter(s => findTask(s.taskId).ownerId === 'business-1') }
-      : { tasks: db.tasks.filter(t => db.offers.some(o => o.taskId === t.id && o.teamId === 'team-orbit')).map(withRating), offers: db.offers.filter(o => o.teamId === 'team-orbit'), stages: db.stages.filter(s => s.teamId === 'team-orbit') }),
+      : { tasks: db.tasks.filter(t => db.offers.some(o => o.taskId === t.id && o.teamId === currentTeam().id)).map(withRating), offers: db.offers.filter(o => o.teamId === currentTeam().id), stages: db.stages.filter(s => s.teamId === currentTeam().id) }),
     submitStage: asyncMethod((stageId, data) => {
       const stage = db.stages.find(s => s.id === stageId);
-      if (!stage || stage.teamId !== 'team-orbit' || !['in_progress', 'revision'].includes(stage.status)) throw new Error('Этот этап недоступен для отправки.');
+      if (!stage || stage.teamId !== currentTeam().id || !['in_progress', 'revision'].includes(stage.status)) throw new Error('Этот этап недоступен для отправки.');
       stage.result = data.result; stage.url = data.url; stage.status = 'pending'; save(); return stage;
     }),
     reviewStage: asyncMethod((stageId, approved, feedback) => {

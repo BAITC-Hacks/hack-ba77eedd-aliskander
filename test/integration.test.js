@@ -28,7 +28,7 @@ test('real frontend adapter: draft, existing rating, publication, proposals, sel
     return window.platformApi;
   }
   let api = adapter();
-  for (const [path, type] of [['/', 'text/html'], ['/demo.html', 'text/html'], ['/styles.css', 'text/css'], ['/api-client.js', 'text/javascript'], ['/draft-autosave.js', 'text/javascript'], ['/demo-api.js', 'text/javascript'], ['/app.js', 'text/javascript']]) {
+  for (const [path, type] of [['/', 'text/html'], ['/demo.html', 'text/html'], ['/styles.css', 'text/css'], ['/api-client.js', 'text/javascript'], ['/team-session.js', 'text/javascript'], ['/draft-autosave.js', 'text/javascript'], ['/demo-api.js', 'text/javascript'], ['/app.js', 'text/javascript']]) {
     const response = await fetch(base + path);
     assert.equal(response.status, 200, path); assert.ok(response.headers.get('content-type').includes(type));
   }
@@ -57,7 +57,8 @@ test('real frontend adapter: draft, existing rating, publication, proposals, sel
   await assert.rejects(api.openDraft(published.id), /уже опубликована/);
   await api.submitOffer(published.id, { team: 'Orbit', members: '3 участника', approach: 'Модель прогноза',
     plan: 'Исследование → прототип → тестирование', duration: '4 недели', contact: 'orbit@example.com', prototypeUrl: 'https://example.com' });
-  await assert.rejects(api.submitOffer(published.id, { team: 'Orbit', members: '3', approach: 'Другой подход', plan: 'План', duration: '2 недели', contact: 'orbit@example.com' }), /уже отправила/);
+  await api.submitOffer(published.id, { team: 'Orbit', members: '3', approach: 'Другой подход', plan: 'План', duration: '2 недели', contact: 'orbit@example.com' });
+  assert.equal((await api.listOffers(published.id)).length, 2);
   const offers = await api.listOffers(published.id);
   assert.equal(offers[0].plan, 'Исследование → прототип → тестирование');
   assert.equal(offers[0].prototypeUrl, 'https://example.com');
@@ -112,4 +113,99 @@ test('autosave preserves newer edits, retries failures and flushes before public
   retry.update({ title: 'Черновик' }); await assert.rejects(retry.flush(), /offline/);
   assert.equal(retry.status, 'error'); assert.equal(retry.dirty(), true);
   fail = false; await retry.flush(); assert.equal(retry.status, 'saved'); retry.reset();
+});
+
+
+test('requirements: repeated offers from different teams and independent manual decisions', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'most-requirements-'));
+  const app = createApp(createStore(join(dir, 'db.json')));
+  t.after(async () => { await new Promise(resolve => app.close(resolve)); rmSync(dir, { recursive: true, force: true }); });
+  app.listen(0, '127.0.0.1'); await once(app, 'listening');
+  const base = `http://127.0.0.1:${app.address().port}`;
+  const memory = new Map();
+  const window = {};
+  const context = { window, fetch: (path, options) => fetch(base + path, options),
+    localStorage: { getItem: key => memory.get(key) || null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) } };
+  runInNewContext(readFileSync(new URL('../public/team-session.js', import.meta.url), 'utf8'), context);
+  runInNewContext(adapterSource, context);
+  const api = window.platformApi;
+  const draft = { title: 'Полная карточка', problem: 'Текущий контекст', need: 'Снизить расходы', users: 'Менеджеры',
+    data: 'CSV', constraints: 'Без персональных данных', outcome: 'Прототип', success: 'Проверка сценариев', contact: 'owner@example.com', interactionFormat: 'Онлайн каждую пятницу' };
+  const task = await api.publishTask(draft);
+  assert.equal((await api.getTask(task.id)).need, draft.need);
+  assert.equal((await api.getTask(task.id)).interactionFormat, draft.interactionFormat);
+  const details = await api.rateTask({ problem: 'Контекст' });
+  assert.equal(details.missingDetails.map(d => d.key).join(','), 'need,interactionFormat');
+  const input = { members: '3 участника', approach: 'Идея', plan: 'План', duration: '2 недели', contact: 'team@example.com' };
+  const orbit = [];
+  for (let i = 0; i < 12; i++) orbit.push(await api.submitOffer(task.id, { ...input, approach: 'Вариант ' + i }));
+  window.platformTeam.set('Новая команда');
+  const other = await api.submitOffer(task.id, { ...input, approach: 'Другая идея', prototypeUrl: 'https://example.com/demo' });
+  assert.equal(other.team, 'Новая команда'); assert.notEqual(other.teamId, orbit[0].teamId);
+  assert.equal((await api.getWorkspace('student')).offers.length, 1);
+  window.platformTeam.set('Orbit');
+  assert.equal((await api.getWorkspace('student')).offers.length, 12);
+  assert.equal((await api.listOffers(task.id)).length, 13);
+  assert.ok((await api.listOffers(task.id)).every(o => o.status === 'pending'));
+  assert.equal((await api.getWorkspace('business')).stages.length, 0, 'No automatic team assignment');
+  await api.decideOffer(orbit[0].id, 'selected');
+  await api.decideOffer(orbit[1].id, 'declined');
+  let offers = await api.listOffers(task.id);
+  assert.equal(offers.find(o => o.id === orbit[0].id).status, 'selected');
+  assert.equal(offers.find(o => o.id === orbit[1].id).status, 'declined');
+  assert.equal(offers.find(o => o.id === orbit[2].id).status, 'pending');
+  await api.decideOffer(orbit[1].id, 'selected'); // Business can reconsider before confirmation.
+  await api.selectOffers(task.id, [orbit[0].id, orbit[1].id, other.id]);
+  offers = await api.listOffers(task.id);
+  assert.equal(offers.filter(o => o.status === 'selected').length, 3);
+  assert.equal(offers.filter(o => o.status === 'declined').length, 10);
+  const workspace = await api.getWorkspace('business');
+  assert.equal(workspace.stages.length, 2, 'Only one stage per selected team, even with two selected proposals');
+  await assert.rejects(api.decideOffer(orbit[0].id, 'declined'), /уже подтверждён/);
+});
+
+test('catalog filters readiness boundaries together with topic and search', () => {
+  const nodes = new Map();
+  const node = selector => {
+    if (!nodes.has(selector)) nodes.set(selector, { innerHTML: '', textContent: '', addEventListener() {} });
+    return nodes.get(selector);
+  };
+  const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const instrumented = source.replace(/  render\(\);\s*\}\)\(\);\s*$/, '  window.testCatalog = { state, renderCards };\n})();');
+  assert.notEqual(instrumented, source);
+  const window = { platformApi: { meta: { persistent: true } }, createDraftAutosave: () => ({}), addEventListener() {} };
+  runInNewContext(instrumented, { window, document: { querySelector: node, addEventListener() {} } });
+  const { state, renderCards } = window.testCatalog;
+  const tasks = [0, 39, 40, 69, 70, 89, 90, 100].map(score => ({ id: 'task-' + score, title: 'Задача ' + score, company: 'Компания',
+    problem: 'Контекст', category: score === 100 ? 'Дизайн' : 'Аналитика', rating: { total: score }, status: 'published', deadline: '2 недели' }));
+  for (let i = 0; i < 4; i++) { state.readiness = String(i); renderCards(tasks); assert.equal(node('#result-count').textContent, 'Найдено: 2'); }
+  state.filter = 'Дизайн'; renderCards(tasks); assert.equal(node('#result-count').textContent, 'Найдено: 1');
+  assert.ok(node('#cards').innerHTML.includes('Задача 100'));
+  state.search = 'нет такой задачи'; renderCards(tasks); assert.equal(node('#result-count').textContent, 'Найдено: 0');
+  state.readiness = ''; state.filter = ''; state.search = ''; renderCards(tasks);
+  assert.equal(node('#result-count').textContent, 'Найдено: 8');
+});
+
+test('offline demo supports the same repeated-offer decisions as the live adapter', async () => {
+  const memory = new Map();
+  const window = {};
+  const context = { window, setTimeout: callback => setTimeout(callback, 0),
+    localStorage: { getItem: key => memory.get(key) || null, setItem: (key, value) => memory.set(key, value) } };
+  runInNewContext(readFileSync(new URL('../public/team-session.js', import.meta.url), 'utf8'), context);
+  runInNewContext(readFileSync(new URL('../public/demo-api.js', import.meta.url), 'utf8'), context);
+  const api = window.platformApi;
+  const a = await api.submitOffer('task-1', { approach: 'Новый вариант', plan: 'План', duration: 'Неделя' });
+  const b = await api.submitOffer('task-1', { approach: 'Другой вариант', plan: 'План', duration: 'Неделя' });
+  assert.notEqual(a.id, b.id);
+  await api.decideOffer(a.id, 'selected');
+  await api.decideOffer(b.id, 'declined');
+  await api.selectOffers('task-1', [a.id]);
+  const offers = await api.listOffers('task-1');
+  assert.equal(offers.filter(o => o.status === 'selected').length, 1);
+  assert.equal(offers.find(o => o.id === b.id).status, 'declined');
+  assert.equal((await api.getWorkspace('student')).stages.length, 1);
+  window.platformTeam.set('Другие студенты');
+  const other = await api.submitOffer('task-2', { approach: 'Сайт', plan: 'План', duration: 'Неделя' });
+  assert.equal(other.team, 'Другие студенты');
+  assert.equal((await api.getWorkspace('student')).offers.length, 1);
 });

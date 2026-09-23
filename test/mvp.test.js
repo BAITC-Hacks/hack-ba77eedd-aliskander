@@ -7,6 +7,25 @@ import { once } from 'node:events';
 import { calculateRating, fields, levelForScore } from '../src/rating.js';
 import { createStore } from '../src/store.js';
 import { createApp } from '../src/server.js';
+import { createSampleData } from '../src/sample-data.js';
+
+test('sample data: seeds two complete tasks and three proposals only when requested', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tasks-samples-'));
+  const file = join(dir, 'db.json');
+  try {
+    const store = createStore(file, createSampleData());
+    assert.equal(store.listTasks().length, 2);
+    assert.equal(store.listTasks().every(task => task.score === 100), true);
+    assert.equal(store.listProposals('example-demand-forecast').length, 2);
+    assert.equal(store.listProposals('example-studio-booking').length, 1);
+
+    store.createTask({ title: 'Сохранённая задача' });
+    const reopened = createStore(file, createSampleData());
+    assert.equal(reopened.listTasks(false).length, 3, 'Existing data must not be reseeded or overwritten');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('rating: weights, empty strings, all combinations and level boundaries', () => {
   assert.equal(calculateRating({ title: 'Название' }).score, 0);
