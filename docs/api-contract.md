@@ -109,3 +109,17 @@
 
 Полная форма запросов и рекомендации для подключения:
 [ai-task-generator.md](ai-task-generator.md).
+
+## AI Match и профиль участника
+
+`POST /api/match` считает `{student, task}` по весам 50/20/10/10/10;
+`POST /api/match/explain` добавляет только AI-текст, не меняя процент.
+`GET / PUT /api/students/:id/profile` читает и сохраняет профиль представителя команды.
+Недельная нагрузка задачи хранится в `requiredHours` строкой для совместимости с редактором.
+
+Методы адаптера: `getProfile()`, `saveProfile(student)`, `matchTask(student, task, explain=false)`.
+Новые предложения получают серверные `studentProfile` и `matchSnapshot`, доступные бизнесу.
+Профиль сохраняется в `students`, подтверждённые этапы добавляются как `completedTasks`.
+Низкий Match не блокирует отклик; автоматическое назначение не добавлено.
+
+Полная формула и контракт: [ai-match.md](ai-match.md).

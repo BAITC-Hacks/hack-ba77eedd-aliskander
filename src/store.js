@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { calculateRating, fields } from './rating.js';
 import { describeRating } from './presentation.js';
+import { calculateMatch, normalizeProfile, validateTaskMatchFields } from './match.js';
 
 export class ApiError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -34,6 +35,8 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
   }
   // Older databases have no stages; preserve their tasks and proposals.
   state.stages ??= [];
+  state.students ??= {};
+  if (!state.students || typeof state.students !== 'object' || Array.isArray(state.students)) throw new Error('Некорректные профили');
   if (!Array.isArray(state.stages)) throw new Error('Некорректные этапы в файле данных');
   function commit(next) {
     mkdirSync(dirname(file), { recursive: true });
@@ -45,6 +48,15 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
     const found = state.tasks.find(item => item.id === id);
     if (!found) throw new ApiError(404, 'Задача не найдена');
     return { ...found, ...describeRating(found) };
+  }
+  function studentProfile(id) {
+    const saved = Object.hasOwn(state.students, id) ? state.students[id] : normalizeProfile({});
+    const seen = new Set();
+    const completedTasks = state.stages.filter(s => s.teamId === id && s.status === 'approved' && !seen.has(s.taskId) && seen.add(s.taskId)).map(s => {
+      const t = task(s.taskId);
+      return { title: t.title, skills: t.requiredSkills || [], category: t.category || '', completed: true, url: s.url || '' };
+    });
+    return structuredClone({ ...saved, completedTasks });
   }
   function selectProposals(taskId, proposalIds) {
     const current = task(taskId);
@@ -66,8 +78,15 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
     });
     return task(taskId);
   }
-  const taskKeys = ['title', 'company', 'category', 'deadline', 'need', 'interactionFormat', 'requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'aiSession', 'aiAssumptions', 'aiMissingInfo', ...Object.keys(fields)];
+  const taskKeys = ['title', 'company', 'category', 'deadline', 'need', 'interactionFormat', 'requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'requiredHours', 'aiSession', 'aiAssumptions', 'aiMissingInfo', ...Object.keys(fields)];
   return {
+    getStudentProfile: studentProfile,
+    saveStudentProfile(id, input) {
+      if (typeof id !== 'string' || !id.trim() || id.length > 100) throw new ApiError(400, 'Некорректный идентификатор участника');
+      const value = normalizeProfile(input);
+      commit({ ...state, students: { ...state.students, [id]: value } });
+      return studentProfile(id);
+    },
     selectProposals,
     // Keep the earlier API compatible; the UI now selects individual proposal IDs.
     selectTeams(taskId, teamIds) {
@@ -107,6 +126,7 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
     },
     createTask(input) {
       const values = strings(input, taskKeys);
+      validateTaskMatchFields(values);
       const item = { ...Object.fromEntries(taskKeys.map(key => [key, ''])), ...values,
         id: randomUUID(), published: false };
       Object.assign(item, calculateRating(item));
@@ -114,7 +134,9 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
       return task(item.id);
     },
     updateTask(id, input) {
-      const item = { ...task(id), ...strings(input, taskKeys) };
+      const values = strings(input, taskKeys);
+      validateTaskMatchFields(values);
+      const item = { ...task(id), ...values };
       Object.assign(item, calculateRating(item));
       commit({ ...state, tasks: state.tasks.map(old => old.id === id ? item : old) });
       return task(id);
@@ -132,7 +154,11 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
       for (const key of ['teamName', 'idea', 'plan', 'deadline']) {
         if (!values[key]) throw new ApiError(400, `Заполните ${key}`);
       }
-      const item = { prototypeUrl: '', ...values, id: randomUUID(), taskId, status: 'pending' };
+      const student = values.teamId ? studentProfile(values.teamId) : null;
+      let matchSnapshot = null;
+      // Match is advisory: legacy incomplete task metadata must never block an offer.
+      if (student) { try { matchSnapshot = calculateMatch({ student, task: task(taskId) }); } catch (_) {} }
+      const item = { prototypeUrl: '', ...values, id: randomUUID(), taskId, status: 'pending', studentProfile: student, matchSnapshot };
       commit({ ...state, proposals: [...state.proposals, item] });
       return { ...item };
     },

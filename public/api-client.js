@@ -8,7 +8,7 @@
   const remember = id => { draftId = id; try { if (id) localStorage.setItem(draftKey, id); else localStorage.removeItem(draftKey); } catch (_) {} };
   const route = id => encodeURIComponent(id);
   const keys = { context: 'problem', expectedResult: 'outcome', successCriteria: 'success' };
-  const extraKeys = ['requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'aiSession', 'aiAssumptions', 'aiMissingInfo'];
+  const extraKeys = ['requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'requiredHours', 'aiSession', 'aiAssumptions', 'aiMissingInfo'];
   const extras = value => Object.fromEntries(extraKeys.map(key => [key, value[key] || '']));
   const toServer = d => ({ ...extras(d), title: d.title || '', company: d.company || '', category: d.category || '', deadline: d.deadline || '',
     context: d.problem || '', expectedResult: d.outcome || '', successCriteria: d.success || '', data: d.data || '',
@@ -34,7 +34,7 @@
     status: !raw.published ? 'draft' : raw.selectionDone ? (raw.selectedTeamIds?.length ? 'in_progress' : 'closed') : 'published',
     selectionDone: Boolean(raw.selectionDone), selectedTeamIds: raw.selectedTeamIds || [], offerCount, rating: rating(raw)
   });
-  const offer = raw => ({ id: raw.id, taskId: raw.taskId, teamId: raw.teamId || raw.id,
+  const offer = raw => ({ studentProfile: raw.studentProfile || null, matchSnapshot: raw.matchSnapshot || null, id: raw.id, taskId: raw.taskId, teamId: raw.teamId || raw.id,
     team: raw.teamName, members: raw.members || 'Состав не указан', approach: raw.idea, plan: raw.plan,
     duration: raw.deadline, contact: raw.contact || 'Контакт не указан', prototypeUrl: raw.prototypeUrl,
     status: raw.status === 'rejected' ? 'declined' : raw.status
@@ -45,6 +45,9 @@
   }
   window.platformApi = {
     meta: { mode: 'live', persistent: true },
+    getProfile: () => request('/students/' + route(currentTeam().id) + '/profile'),
+    saveProfile: student => request('/students/' + route(currentTeam().id) + '/profile', 'PUT', student),
+    matchTask: (student, task, explain = false) => request('/match' + (explain ? '/explain' : ''), 'POST', { student, task }),
     getAIStatus: () => request('/ai/status'),
     aiTurn: input => request('/ai/interview', 'POST', input),
     listTasks: async () => (await request('/tasks')).map(raw => task(raw)),
