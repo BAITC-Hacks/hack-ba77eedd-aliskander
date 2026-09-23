@@ -22,12 +22,12 @@ function strings(input, keys) {
 }
 
 // One server process owns this file. Commit to disk before replacing in-memory state.
-export function createStore(file) {
+export function createStore(file, initialState = { tasks: [], proposals: [], stages: [] }) {
   let state;
   try { state = JSON.parse(readFileSync(file, 'utf8')); }
   catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    state = { tasks: [], proposals: [] };
+    state = structuredClone(initialState);
   }
   if (!Array.isArray(state.tasks) || !Array.isArray(state.proposals)) {
     throw new Error('Некорректный файл данных');
