@@ -77,6 +77,7 @@
       if (raw.published) throw new Error('Эта задача уже опубликована');
       remember(id); return task(raw);
     },
+    updateTask: async (id, draft) => task(await request('/tasks/' + route(id), 'PATCH', toServer(draft))),
     saveDraft,
     async publishTask(draft) {
       await saveDraft(draft);

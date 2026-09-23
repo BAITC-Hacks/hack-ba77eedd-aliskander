@@ -90,6 +90,15 @@
         { key: 'constraints', label: 'Какие есть условия и ограничения?', placeholder: 'Бюджет, технологии, конфиденциальность, время для встреч' }
       ];
     }),
+    updateTask: asyncMethod((taskId, draft) => {
+      const old = findTask(taskId);
+      if (old.ownerId !== 'business-1' || old.selectionDone) throw new Error('Редактирование недоступно после подтверждения выбора или для чужой задачи.');
+      if (!draft.title.trim() || !draft.problem.trim()) throw new Error('Укажите название и контекст задачи');
+      window.MostMilestones.parse(draft.stagePlan,draft);
+      const updated = {...old,...copy(draft),id:old.id,ownerId:old.ownerId,status:old.status,createdAt:old.createdAt,publishedAt:old.publishedAt,selectedTeamIds:old.selectedTeamIds,selectionDone:old.selectionDone};
+      db.tasks = db.tasks.map(task => task.id === taskId ? updated : task);
+      save(); return withRating(updated);
+    }),
     getDraft: asyncMethod(() => db.draft),
     saveDraft: asyncMethod(draft => { db.draft = draft; save(); return draft; }),
     rateTask: asyncMethod(rate),

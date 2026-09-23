@@ -53,6 +53,19 @@ test('protected accounts: ownership, independent progress approval, persistence 
   await secondTeam('/students/'+student.user.id+'/profile','PUT',{},403);
   await team('/proposals/'+offer.id+'/status','PATCH',{status:'selected'},403);
   await other('/tasks/'+draft.id+'/selection','POST',{proposalIds:[offer.id]},403);
+  // Published edits retain identity and offers, change rank, and require ownership.
+  await other('/tasks/'+draft.id,'PATCH',{data:'Чужие данные'},403);
+  await team('/tasks/'+draft.id,'PATCH',{data:'Правка команды'},403);
+  await business('/tasks/'+draft.id,'PATCH',{title:'   '},400);
+  await business('/tasks/'+draft.id,'PATCH',{context:''},400);
+  await business('/tasks/'+draft.id,'PATCH',{data:'',users:''});
+  const competitor=await business('/tasks','POST',{...complete,contact:''},201);
+  await business('/tasks/'+competitor.id+'/publish','POST',{});
+  assert.equal((await anonymous('/tasks?view=catalog')).items[0].id,competitor.id);
+  const edited=await business('/tasks/'+draft.id,'PATCH',{data:complete.data,users:complete.users});
+  assert.equal(edited.id,draft.id);assert.equal(edited.published,true);assert.equal(edited.publishedAt,published.publishedAt);assert.equal(edited.score,100);
+  assert.equal((await business('/tasks/'+draft.id+'/proposals')).length,2);
+  assert.equal((await anonymous('/tasks?view=catalog')).items[0].id,draft.id);
   await business('/tasks/'+draft.id+'/selection','POST',{proposalIds:[offer.id,otherOffer.id]});
   const stages=await team('/stages');assert.equal(stages.length,3);assert.equal((await business('/stages')).length,6);
   const result={result:'Согласованы основные сценарии записи',url:root+'/prototype.html'};
