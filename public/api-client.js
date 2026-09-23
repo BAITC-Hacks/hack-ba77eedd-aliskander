@@ -1,6 +1,7 @@
 ﻿/* Adapter for the team's existing Node HTTP API. No rating weights are duplicated here. */
 (() => {
   'use strict';
+  const currentTeam = () => window.platformTeam?.current || { id: 'team-orbit', name: 'Orbit' };
   const draftKey = 'most-server-draft-id';
   let draftId = '';
   try { draftId = localStorage.getItem(draftKey) || ''; } catch (_) { /* Server remains available. */ }
@@ -9,7 +10,7 @@
   const keys = { context: 'problem', expectedResult: 'outcome', successCriteria: 'success' };
   const toServer = d => ({ title: d.title || '', company: d.company || '', category: d.category || '', deadline: d.deadline || '',
     context: d.problem || '', expectedResult: d.outcome || '', successCriteria: d.success || '', data: d.data || '',
-    constraints: d.constraints || '', users: d.users || '', contact: d.contact || '' });
+    need: d.need || '', interactionFormat: d.interactionFormat || '', constraints: d.constraints || '', users: d.users || '', contact: d.contact || '' });
   async function request(path, method = 'GET', data) {
     const response = await fetch('/api' + path, {
       method, headers: { 'Content-Type': 'application/json' },
@@ -19,14 +20,14 @@
     if (!response.ok) { const error = new Error(result.error || 'Не удалось выполнить запрос'); error.status = response.status; throw error; }
     return result;
   }
-  const rating = raw => ({ total: raw.score, level: raw.level,
+  const rating = raw => ({ total: raw.score, level: raw.level, missingDetails: raw.missingDetails || [],
     breakdown: (raw.breakdown || []).map(c => ({ ...c, key: keys[c.key] || c.key })),
     hints: (raw.breakdown || []).filter(c => c.points < c.max).map(c => c.hint)
   });
   const task = (raw, offerCount = 0) => ({ id: raw.id, title: raw.title || 'Без названия', company: raw.company || 'Бизнес',
     category: raw.category || 'Исследования', deadline: raw.deadline || '', problem: raw.context || '',
     outcome: raw.expectedResult || '', success: raw.successCriteria || '', data: raw.data || '',
-    constraints: raw.constraints || '', users: raw.users || '', contact: raw.contact || '',
+    need: raw.need || '', interactionFormat: raw.interactionFormat || '', constraints: raw.constraints || '', users: raw.users || '', contact: raw.contact || '',
     ownerId: 'business-1', // Shared demo workspace; replace with authenticated session when available.
     status: !raw.published ? 'draft' : raw.selectionDone ? (raw.selectedTeamIds?.length ? 'in_progress' : 'closed') : 'published',
     selectionDone: Boolean(raw.selectionDone), selectedTeamIds: raw.selectedTeamIds || [], offerCount, rating: rating(raw)
@@ -69,9 +70,11 @@
     },
     listOffers: async id => (await request('/tasks/' + route(id) + '/proposals')).map(offer),
     submitOffer: async (id, data) => offer(await request('/tasks/' + route(id) + '/proposals', 'POST', {
-      teamId: 'team-orbit', teamName: data.team, members: data.members, contact: data.contact,
+      teamId: currentTeam().id, teamName: currentTeam().name, members: data.members, contact: data.contact,
       idea: data.approach, plan: data.plan, deadline: data.duration, prototypeUrl: data.prototypeUrl || ''
     })),
+    decideOffer: async (id, status) => offer(await request('/proposals/' + route(id) + '/status', 'PATCH', { status: status === 'declined' ? 'rejected' : status })),
+    selectOffers: async (id, proposalIds) => task(await request('/tasks/' + route(id) + '/selection', 'POST', { proposalIds })),
     selectTeams: async (id, teamIds) => task(await request('/tasks/' + route(id) + '/selection', 'POST', { teamIds })),
     async getWorkspace(role) {
       const [rawTasks, stages] = await Promise.all([request('/tasks?all=true'), request('/stages')]);
@@ -79,8 +82,8 @@
       const offers = groups.flat().map(offer);
       const tasks = rawTasks.map((raw, index) => task(raw, groups[index].length));
       return role === 'business' ? { tasks, offers, stages } : {
-        tasks: tasks.filter(t => offers.some(o => o.taskId === t.id && o.teamId === 'team-orbit')),
-        offers: offers.filter(o => o.teamId === 'team-orbit'), stages: stages.filter(s => s.teamId === 'team-orbit')
+        tasks: tasks.filter(t => offers.some(o => o.taskId === t.id && o.teamId === currentTeam().id)),
+        offers: offers.filter(o => o.teamId === currentTeam().id), stages: stages.filter(s => s.teamId === currentTeam().id)
       };
     },
     submitStage: (id, data) => request('/stages/' + route(id) + '/submit', 'POST', data),

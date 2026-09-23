@@ -46,27 +46,35 @@ export function createStore(file) {
     if (!found) throw new ApiError(404, 'Задача не найдена');
     return { ...found, ...describeRating(found) };
   }
-  const taskKeys = ['title', 'company', 'category', 'deadline', ...Object.keys(fields)];
+  function selectProposals(taskId, proposalIds) {
+    const current = task(taskId);
+    if (!current.published) throw new ApiError(409, 'Сначала опубликуйте задачу');
+    if (current.selectionDone) throw new ApiError(409, 'Выбор уже подтверждён');
+    if (!Array.isArray(proposalIds) || proposalIds.some(id => typeof id !== 'string')) throw new ApiError(400, 'proposalIds: ожидается массив строк');
+    const ids = [...new Set(proposalIds)];
+    const offers = state.proposals.filter(p => p.taskId === taskId);
+    if (ids.some(id => !offers.some(p => p.id === id))) throw new ApiError(400, 'Предложение команды не найдено');
+    const chosen = offers.filter(p => ids.includes(p.id));
+    const teams = new Map(chosen.map(p => [p.teamId || p.id, p]));
+    const item = { ...current, selectionDone: true, selectedTeamIds: [...teams.keys()], selectedProposalIds: ids };
+    const stages = [...teams.entries()].map(([teamId, p]) => ({ id: randomUUID(), taskId, teamId, team: p.teamName,
+      title: 'Демонстрация рабочего прототипа', points: 100, status: 'in_progress', result: '', url: '', feedback: '' }));
+    commit({ ...state,
+      tasks: state.tasks.map(t => t.id === taskId ? item : t),
+      proposals: state.proposals.map(p => p.taskId === taskId ? { ...p, status: ids.includes(p.id) ? 'selected' : 'rejected' } : p),
+      stages: [...state.stages, ...stages]
+    });
+    return task(taskId);
+  }
+  const taskKeys = ['title', 'company', 'category', 'deadline', 'need', 'interactionFormat', ...Object.keys(fields)];
   return {
+    selectProposals,
+    // Keep the earlier API compatible; the UI now selects individual proposal IDs.
     selectTeams(taskId, teamIds) {
-      const current = task(taskId);
-      if (!current.published) throw new ApiError(409, 'Сначала опубликуйте задачу');
-      if (current.selectionDone) throw new ApiError(409, 'Выбор уже подтверждён');
       if (!Array.isArray(teamIds) || teamIds.some(id => typeof id !== 'string')) throw new ApiError(400, 'teamIds: ожидается массив строк');
-      const ids = [...new Set(teamIds)];
       const offers = state.proposals.filter(p => p.taskId === taskId);
-      const identity = p => p.teamId || p.id;
-      if (ids.some(id => !offers.some(p => identity(p) === id))) throw new ApiError(400, 'Предложение команды не найдено');
-      const chosen = offers.filter(p => ids.includes(identity(p)));
-      const item = { ...current, selectionDone: true, selectedTeamIds: ids };
-      const stages = chosen.map(p => ({ id: randomUUID(), taskId, teamId: identity(p), team: p.teamName,
-        title: 'Демонстрация рабочего прототипа', points: 100, status: 'in_progress', result: '', url: '', feedback: '' }));
-      commit({ ...state,
-        tasks: state.tasks.map(t => t.id === taskId ? item : t),
-        proposals: state.proposals.map(p => p.taskId === taskId ? { ...p, status: ids.includes(identity(p)) ? 'selected' : 'rejected' } : p),
-        stages: [...state.stages, ...stages]
-      });
-      return task(taskId);
+      if (teamIds.some(id => !offers.some(p => (p.teamId || p.id) === id))) throw new ApiError(400, 'Предложение команды не найдено');
+      return selectProposals(taskId, offers.filter(p => teamIds.includes(p.teamId || p.id)).map(p => p.id));
     },
     listStages() { return state.stages.map(stage => ({ ...stage })); },
     submitStage(id, input) {
@@ -124,7 +132,6 @@ export function createStore(file) {
       for (const key of ['teamName', 'idea', 'plan', 'deadline']) {
         if (!values[key]) throw new ApiError(400, `Заполните ${key}`);
       }
-      if (values.teamId && state.proposals.some(p => p.taskId === taskId && p.teamId === values.teamId)) throw new ApiError(409, 'Команда уже отправила предложение');
       const item = { prototypeUrl: '', ...values, id: randomUUID(), taskId, status: 'pending' };
       commit({ ...state, proposals: [...state.proposals, item] });
       return { ...item };
