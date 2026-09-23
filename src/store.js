@@ -174,6 +174,7 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
       validateTaskMatchFields(values);
       try { catalog.validateFields(values); } catch (error) { throw new ApiError(400,error.message); }
       const item = { ...task(id), ...values };
+      if (item.published && (!item.title.trim() || !item.context.trim())) throw new ApiError(400,'Укажите название и контекст задачи');
       try { item.stagePlan=JSON.stringify(milestones.parse(item.stagePlan,item)); } catch(error){throw new ApiError(400,error.message);}
       Object.assign(item, calculateRating(item));
       commit({ ...state, tasks: state.tasks.map(old => old.id === id ? item : old) });
