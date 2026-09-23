@@ -1,8 +1,9 @@
-import { createServer } from 'node:http';
+﻿import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { createStore, ApiError } from './store.js';
+import { describeRating, clarificationQuestions } from './presentation.js';
 
 const publicDir = new URL('../public/', import.meta.url);
 async function body(request) {
@@ -27,10 +28,23 @@ export function createApp(store) {
       const url = new URL(request.url, 'http://localhost');
       const path = url.pathname;
       const method = request.method;
-      if (method === 'GET' && ['/', '/app.js'].includes(path)) {
-        const file = path === '/' ? 'index.html' : 'app.js';
-        response.writeHead(200, { 'Content-Type': file.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/html; charset=utf-8' });
+      if (method === 'GET' && ['/', '/index.html', '/demo.html', '/app.js', '/api-client.js', '/demo-api.js', '/draft-autosave.js', '/styles.css'].includes(path)) {
+        const file = path === '/' ? 'index.html' : path.slice(1);
+        response.writeHead(200, { 'Content-Type': file.endsWith('.js') ? 'text/javascript; charset=utf-8' : file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8' });
         return response.end(readFileSync(new URL(file, publicDir)));
+      }
+      if (method === 'POST' && ['/api/rating', '/api/questions'].includes(path)) {
+        const input = await body(request);
+        if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApiError(400, 'Ожидается JSON-объект');
+        return json(200, path === '/api/rating' ? describeRating(input) : clarificationQuestions(input));
+      }
+      if (method === 'GET' && path === '/api/stages') return json(200, store.listStages());
+      const selection = path.match(/^\/api\/tasks\/([^/]+)\/selection$/);
+      if (selection && method === 'POST') return json(200, store.selectTeams(selection[1], (await body(request))?.teamIds));
+      const stage = path.match(/^\/api\/stages\/([^/]+)\/(submit|review)$/);
+      if (stage && method === 'POST') {
+        const input = await body(request);
+        return json(200, stage[2] === 'submit' ? store.submitStage(stage[1], input) : store.reviewStage(stage[1], input));
       }
       if (path === '/api/tasks') {
         if (method === 'GET') return json(200, store.listTasks(url.searchParams.get('all') !== 'true'));
