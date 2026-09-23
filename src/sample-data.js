@@ -40,21 +40,21 @@ export function createSampleData() {
       members: '3 участника: аналитик, разработчик и дизайнер', contact: 'orbit@example.com', status: 'pending',
       idea: 'Соберём базовый прогноз по истории продаж, погоде и календарю, а рекомендации покажем в простом веб-дашборде.',
       plan: 'Очистка данных → базовая модель → проверка на отложенной выборке → дашборд и инструкция.',
-      deadline: '4 недели', prototypeUrl: 'https://example.com/orbit-demand'
+      deadline: '4 недели', prototypeUrl: ''
     },
     {
       id: 'example-offer-vector', taskId: tasks[0].id, teamId: 'team-vector', teamName: 'Вектор',
       members: '4 участника: два аналитика, Python-разработчик и UX-дизайнер', contact: 'vector@example.com', status: 'pending',
       idea: 'Начнём с интервью с бариста, сравним несколько моделей и добавим объяснение факторов, влияющих на спрос.',
       plan: 'Интервью → анализ данных → сравнение моделей → тестирование рекомендаций вместе с управляющим.',
-      deadline: '3 недели', prototypeUrl: 'https://example.com/vector-forecast'
+      deadline: '3 недели', prototypeUrl: ''
     },
     {
       id: 'example-offer-pixel', taskId: tasks[1].id, teamId: 'team-pixel', teamName: 'Pixel Crew',
       members: '3 участника: UX/UI-дизайнер и два frontend-разработчика', contact: 'pixel@example.com', status: 'pending',
       idea: 'Сделаем мобильный сценарий записи за три шага и кабинет администратора с актуальным списком участников.',
       plan: 'Карта сценариев → интерактивный макет → адаптивный прототип → пользовательская проверка.',
-      deadline: '3 недели', prototypeUrl: 'https://example.com/pixel-booking'
+      deadline: '3 недели', prototypeUrl: '/prototype.html?variant=grid'
     }
   ];
   return { tasks, proposals, stages: [] };

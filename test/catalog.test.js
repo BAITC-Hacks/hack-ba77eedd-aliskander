@@ -1,3 +1,6 @@
+import readiness from '../public/readiness-engine.cjs';
+import milestones from '../public/milestones.cjs';
+import interviewRules from '../public/interview-rules.cjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -9,7 +12,8 @@ import catalog from '../public/catalog-engine.cjs';
 import fixtures from '../public/catalog-demo.cjs';
 import matchDemo from '../public/match-demo.cjs';
 import { createStore } from '../src/store.js';
-import { createApp } from '../src/server.js';
+import { createApp as createProtectedApp } from '../src/server.js';
+const createApp=(store,ai)=>createProtectedApp(store,ai,{authorize:false});
 const now=Date.UTC(2026,8,23,12);
 const base={...matchDemo.task,published:true,publishedAt:'2026-09-22T12:00:00.000Z',applicationDeadline:'2026-09-28',durationWeeks:'3',teamSize:'2-3',workFormat:'Remote',score:90};
 const tasks=[{...base,id:'a',title:'React dashboard',company:'Nova',applicantsCount:8},{...base,id:'b',title:'API для доставки',category:'Backend',requiredSkills:'Python, FastAPI, PostgreSQL',difficulty:'Hard',workFormat:'On-site',durationWeeks:'6',teamSize:'4-5',applicantsCount:2,publishedAt:'2026-09-23T10:00:00.000Z'},{...base,id:'c',title:'Форма записи',category:'Frontend',difficulty:'Easy',durationWeeks:'0.5',teamSize:'1',applicantsCount:0,applicationDeadline:'2026-09-24'}];
@@ -35,8 +39,8 @@ test('query round trip retains independent filters and safely bounds paging',()=
 
 test('sorts are deterministic, missing values go last, and pagination has no duplicates',()=>{
   for(const [sort,first] of [['newest','b'],['popular','a'],['deadline','c'],['difficulty','c'],['duration','c']]) assert.equal(catalog.query(tasks,{sort},context).items[0].id,first,sort);
-  const matched=catalog.query(tasks,{},context);assert.equal(matched.sort,'match');assert.ok(matched.items.every((t,i,a)=>!i||a[i-1].matchScore>=t.matchScore));
-  const anonymous=catalog.query(tasks,{sort:'match'},{now});assert.equal(anonymous.sort,'newest');assert.ok(anonymous.items.every(t=>t.matchScore===null));
+  const matched=catalog.query(tasks,{sort:'match'},context);assert.equal(matched.sort,'match');assert.ok(matched.items.every((t,i,a)=>!i||a[i-1].matchScore>=t.matchScore));
+  const anonymous=catalog.query(tasks,{sort:'match'},{now});assert.equal(anonymous.sort,'rating');assert.ok(anonymous.items.every(t=>t.matchScore===null));
   const incomplete=catalog.query(tasks,{}, {now,student:{skills:['React']}});assert.equal(incomplete.matchAvailable,false);
   const data=fixtures.build(now).tasks;
   const first=catalog.query(data,{page:1,limit:12},{now}), second=catalog.query(data,{page:2,limit:12},{now});
@@ -79,7 +83,7 @@ test('catalog HTTP API and frontend adapter preserve old routes, persist bookmar
   await request('/api/tasks/'+expired.id+'/proposals','POST',{teamName:'Orbit',teamId:'team-orbit',idea:'CRM',plan:'План',deadline:'3 недели'},409);
   for(let i=0;i<2;i++)await request('/api/tasks/'+target.id+'/proposals','POST',{teamName:'Orbit',teamId:'team-orbit',idea:'Вариант '+i,plan:'План',deadline:'3 недели'},201);
   const detail=await request('/api/tasks/'+target.id+'?studentId=team-orbit');assert.equal(detail.applicantsCount,1);assert.equal(detail.offerCount,2);assert.equal(detail.isSaved,true);
-  const window={platformTeam:{current:{id:'team-orbit',name:'Orbit'}}};
+  const window={MostReadiness:readiness,MostMilestones:milestones,platformTeam:{current:{id:'team-orbit',name:'Orbit'}}};
   let calls=0;
   runInNewContext(readFileSync(new URL('../public/api-client.js',import.meta.url),'utf8'),{window,URLSearchParams,fetch:(path,options)=>{calls++;return fetch(root+path,options);},localStorage:{getItem:()=>null,setItem(){},removeItem(){}}});
   const api=window.platformApi;
@@ -90,7 +94,7 @@ test('catalog HTTP API and frontend adapter preserve old routes, persist bookmar
 
 test('offline catalog has 20 additional tasks and bookmarks survive reloading the adapter',async()=>{
   const memory=new Map();
-  function boot(){const window={platformTeam:{current:{id:'team-orbit',name:'Orbit'}}};const ctx={window,URL,URLSearchParams,setTimeout:callback=>setTimeout(callback,0),localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)}};
+  function boot(){const window={MostReadiness:readiness,MostMilestones:milestones,platformTeam:{current:{id:'team-orbit',name:'Orbit'}}};const ctx={window,URL,URLSearchParams,setTimeout:callback=>setTimeout(callback,0),localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)}};
     for(const name of ['match-engine.cjs','match-demo.cjs','catalog-engine.cjs','catalog-demo.cjs','demo-api.js'])runInNewContext(readFileSync(new URL('../public/'+name,import.meta.url),'utf8'),ctx);return window.platformApi;}
   let api=boot();await api.saveProfile(matchDemo.student);
   const first=await api.listCatalog('limit=12',true);assert.equal(first.items.length,12);assert.ok(first.pagination.total>=20);
@@ -99,19 +103,19 @@ test('offline catalog has 20 additional tasks and bookmarks survive reloading th
 });
 
 test('catalog cards escape input, expose saved state and hide invalid or absent Match scores',()=>{
-  const window={MostCatalog:catalog};runInNewContext(readFileSync(new URL('../public/catalog-components.js',import.meta.url),'utf8'),{window});
+  const window={MostReadiness:readiness,MostMilestones:milestones,MostInterview:interviewRules,MostCatalog:catalog};runInNewContext(readFileSync(new URL('../public/catalog-components.js',import.meta.url),'utf8'),{window});
   const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const views=window.createCatalogComponents(h),task=catalog.enrich({...tasks[0],title:'<img src=x onerror=alert(1)>'},context);
   const card=views.TaskCard(task,true);assert.ok(!card.includes('<img'));assert.ok(card.includes('aria-pressed="true"'));assert.ok(card.includes('87'));assert.ok(card.includes('task-card-link'));
-  for(const matchScore of [null,NaN,-1,101,'87'])assert.ok(views.TaskCard({...task,matchScore},true).includes('Complete your profile'));
-  assert.ok(views.EmptyState({...catalog.defaults(),saved:true}).includes('saved'));
+  for(const matchScore of [null,NaN,-1,101,'87'])assert.ok(views.TaskCard({...task,matchScore},true).includes('Заполните профиль команды'));
+  assert.ok(views.EmptyState({...catalog.defaults(),saved:true}).includes('сохранённых'));
   assert.equal((views.TaskSkeleton().match(/class="catalog-skeleton"/g)||[]).length,6);
 });
 
 test('catalog controller debounces search, aborts stale requests, preserves filters and appends pages',async()=>{
   const nodes=new Map(),timers=new Map(),requests=[],historyCalls=[];let timerId=0;
   function node(key){if(!nodes.has(key))nodes.set(key,{innerHTML:'',textContent:'',value:'',isConnected:true,handlers:{},dataset:{},setAttribute(){},querySelectorAll(){return[];},addEventListener(type,fn){this.handlers[type]=fn;},appendChild(child){child.parent=this;},showModal(){this.open=true;},close(){this.open=false;this.handlers.close?.();}});return nodes.get(key);}
-  const window={MostCatalog:catalog,platformTeam:{current:{id:'team-orbit',name:'Orbit'}}};
+  const window={MostReadiness:readiness,MostMilestones:milestones,MostInterview:interviewRules,MostCatalog:catalog,platformTeam:{current:{id:'team-orbit',name:'Orbit'}}};
   const state={role:'student',ticket:1};const ctx={window,document:{querySelector:node,querySelectorAll:()=>[]},AbortController,sessionStorage:{getItem:()=>null,setItem(){}},history:{pushState:(_,__,url)=>historyCalls.push(url),replaceState:(_,__,url)=>historyCalls.push(url)},setTimeout:fn=>{timers.set(++timerId,fn);return timerId;},clearTimeout:id=>timers.delete(id)};
   for(const file of ['catalog-components.js','catalog-page.js'])runInNewContext(readFileSync(new URL('../public/'+file,import.meta.url),'utf8'),ctx);
   const data=fixtures.build(now).tasks;
@@ -125,9 +129,9 @@ test('catalog controller debounces search, aborts stale requests, preserves filt
   const checkbox={dataset:{filter:'category'},value:'frontend',checked:true,type:'checkbox'};
   node('#catalog-filters').handlers.change({target:{closest:()=>checkbox}});assert.equal(requests.length,3);assert.equal(requests[1].signal.aborted,true);
   resolve(1);await tick();assert.ok(!node('#catalog-count').textContent.includes('20'));
-  resolve(2);await tick();assert.equal(node('#catalog-count').textContent,'1 tasks found');
+  resolve(2);await tick();assert.equal(node('#catalog-count').textContent,'Найдено задач: 1');
   node('#catalog-sort').onchange({target:{value:'duration'}});assert.ok(requests[3].query.includes('category=frontend'));assert.ok(requests[3].query.includes('search=React+dashboard'));resolve(3);await tick();
-  node('#app').handlers.click({preventDefault(){},target:{closest:selector=>selector==='[data-clear-filters]'?{}:null}});resolve(4);await tick();assert.equal(node('#catalog-count').textContent,'20 tasks found');
+  node('#app').handlers.click({preventDefault(){},target:{closest:selector=>selector==='[data-clear-filters]'?{}:null}});resolve(4);await tick();assert.equal(node('#catalog-count').textContent,'Найдено задач: 20');
   node('#load-more-tasks').handlers.click();assert.ok(requests[5].query.includes('page=2'));resolve(5);await tick();assert.ok(node('#catalog-pagination').innerHTML.includes('Показано 20 из 20'));
   const difficulty={dataset:{filter:'difficulty'},value:'hard',checked:true,type:'checkbox'};node('#catalog-filters').handlers.change({target:{closest:()=>difficulty}});
   assert.ok(!requests[6].query.includes('page=2'));assert.ok(requests[6].query.includes('difficulty=hard'));resolve(6);await tick();

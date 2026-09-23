@@ -1,3 +1,6 @@
+import readiness from '../public/readiness-engine.cjs';
+import milestones from '../public/milestones.cjs';
+import interviewRules from '../public/interview-rules.cjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -6,7 +9,8 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { runInNewContext } from 'node:vm';
 import { createStore } from '../src/store.js';
-import { createApp } from '../src/server.js';
+import { createApp as createProtectedApp } from '../src/server.js';
+const createApp=(store,ai)=>createProtectedApp(store,ai,{authorize:false});
 
 const adapterSource = readFileSync(new URL('../public/api-client.js', import.meta.url), 'utf8');
 const autosaveSource = readFileSync(new URL('../public/draft-autosave.js', import.meta.url), 'utf8');
@@ -22,7 +26,7 @@ test('real frontend adapter: draft, existing rating, publication, proposals, sel
   const base = `http://127.0.0.1:${app.address().port}`;
   const memory = new Map();
   function adapter() {
-    const window = {};
+    const window = {MostReadiness:readiness,MostMilestones:milestones,MostInterview:interviewRules};
     runInNewContext(adapterSource, { window, fetch: (path, options) => fetch(base + path, options),
       localStorage: { getItem: key => memory.get(key) || null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) } });
     return window.platformApi;
@@ -67,8 +71,9 @@ test('real frontend adapter: draft, existing rating, publication, proposals, sel
   assert.equal((await api.getTask(published.id)).status, 'in_progress');
   await assert.rejects(api.selectTeams(published.id, []), /уже подтверждён/);
   let workspace = await api.getWorkspace('student');
-  assert.equal(workspace.offers[0].status, 'selected'); assert.equal(workspace.stages.length, 1);
+  assert.equal(workspace.offers[0].status, 'selected'); assert.equal(workspace.stages.length, 3);
   const stage = workspace.stages[0];
+  await api.acceptPlan(published.id);
   await assert.rejects(api.reviewStage(stage.id, true, ''), /ещё не отправлен/);
   await assert.rejects(api.submitStage(stage.id, { result: 'Готово', url: 'javascript:alert(1)' }), /ссылка/);
   await api.submitStage(stage.id, { result: 'Рабочий прототип', url: 'https://example.com' });
@@ -79,7 +84,7 @@ test('real frontend adapter: draft, existing rating, publication, proposals, sel
   await api.reviewStage(stage.id, true, 'Принято');
   await assert.rejects(api.reviewStage(stage.id, true, ''), /уже проверен/);
   workspace = await api.getWorkspace('student');
-  assert.equal(workspace.stages.filter(s => s.status === 'approved').reduce((sum, s) => sum + s.points, 0), 100);
+  assert.equal(workspace.stages.filter(s => s.status === 'approved').reduce((sum, s) => sum + s.points, 0), 20);
   assert.equal(createStore(file).listStages()[0].status, 'approved');
   const closed = await api.publishTask({ ...draft, title: 'Без выбора' });
   await api.selectTeams(closed.id, []);
@@ -93,11 +98,11 @@ test('real frontend adapter: draft, existing rating, publication, proposals, sel
   }
   await api.selectTeams(multi.id, ['team-orbit', 'team-vector']);
   assert.equal((await api.getTask(multi.id)).selectedTeamIds.length, 2);
-  assert.equal((await api.getWorkspace('business')).stages.filter(s => s.taskId === multi.id).length, 2);
+  assert.equal((await api.getWorkspace('business')).stages.filter(s => s.taskId === multi.id).length, 6);
 });
 
 test('autosave preserves newer edits, retries failures and flushes before publication', async () => {
-  const window = {};
+  const window = {MostReadiness:readiness,MostMilestones:milestones,MostInterview:interviewRules};
   runInNewContext(autosaveSource, { window, setTimeout, clearTimeout });
   const writes = []; let release;
   const saver = window.createDraftAutosave({ delay: 60000, save: async draft => {
@@ -123,7 +128,7 @@ test('requirements: repeated offers from different teams and independent manual 
   app.listen(0, '127.0.0.1'); await once(app, 'listening');
   const base = `http://127.0.0.1:${app.address().port}`;
   const memory = new Map();
-  const window = {};
+  const window = {MostReadiness:readiness,MostMilestones:milestones,MostInterview:interviewRules};
   const context = { window, fetch: (path, options) => fetch(base + path, options),
     localStorage: { getItem: key => memory.get(key) || null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) } };
   runInNewContext(readFileSync(new URL('../public/team-session.js', import.meta.url), 'utf8'), context);
@@ -160,7 +165,7 @@ test('requirements: repeated offers from different teams and independent manual 
   assert.equal(offers.filter(o => o.status === 'selected').length, 3);
   assert.equal(offers.filter(o => o.status === 'declined').length, 10);
   const workspace = await api.getWorkspace('business');
-  assert.equal(workspace.stages.length, 2, 'Only one stage per selected team, even with two selected proposals');
+  assert.equal(workspace.stages.length, 6, 'One three-stage plan per selected team, even with two selected proposals');
   await assert.rejects(api.decideOffer(orbit[0].id, 'declined'), /уже подтверждён/);
 });
 
@@ -175,7 +180,7 @@ test('catalog filters readiness boundaries together with topic and search', asyn
 
 test('offline demo supports the same repeated-offer decisions as the live adapter', async () => {
   const memory = new Map();
-  const window = {};
+  const window = {MostReadiness:readiness,MostMilestones:milestones,MostInterview:interviewRules};
   const context = { window, URL, setTimeout: callback => setTimeout(callback, 0),
     localStorage: { getItem: key => memory.get(key) || null, setItem: (key, value) => memory.set(key, value) } };
   runInNewContext(readFileSync(new URL('../public/team-session.js', import.meta.url), 'utf8'), context);
@@ -191,7 +196,7 @@ test('offline demo supports the same repeated-offer decisions as the live adapte
   const offers = await api.listOffers('task-1');
   assert.equal(offers.filter(o => o.status === 'selected').length, 1);
   assert.equal(offers.find(o => o.id === b.id).status, 'declined');
-  assert.equal((await api.getWorkspace('student')).stages.length, 1);
+  assert.equal((await api.getWorkspace('student')).stages.length, 3);
   window.platformTeam.set('Другие студенты');
   const other = await api.submitOffer('task-2', { approach: 'Сайт', plan: 'План', duration: 'Неделя' });
   assert.equal(other.team, 'Другие студенты');

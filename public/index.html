@@ -6,6 +6,9 @@
   <meta name="theme-color" content="#174d40">
   <title>Мост — задачи бизнеса, решения студентов</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="readiness-engine.cjs" defer></script>
+  <script src="interview-rules.cjs" defer></script>
+  <script src="milestones.cjs" defer></script>
   <script src="match-engine.cjs" defer></script>
   <script src="match-demo.cjs" defer></script>
   <script src="catalog-engine.cjs" defer></script>
@@ -15,19 +18,22 @@
   <script src="draft-autosave.js" defer></script>
   <script src="ai-components.js" defer></script>
   <script src="demo-ai.js" defer></script>
+  <script src="case-data.js" defer></script>
+  <script src="review-editor.js" defer></script>
   <script src="ai-flow.js" defer></script>
   <script src="match-ui.js" defer></script>
   <script src="catalog-components.js" defer></script>
   <script src="catalog-page.js" defer></script>
+  <script src="auth-ui.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
   <header class="header">
     <a class="brand" href="#catalog" aria-label="Мост, главная"><span class="brand-icon">м</span>мост<span class="brand-dot">.</span></a>
-    <nav aria-label="Основная навигация"><a href="#catalog" data-nav="catalog">Каталог задач</a><a href="#workspace" data-nav="workspace">Мой кабинет</a></nav>
-    <label class="role-label">Демо-режим<select id="role"><option value="business">Бизнес · Алия</option><option value="student">Студенческая команда</option></select></label>
+    <nav aria-label="Основная навигация"><a href="#catalog" data-nav="catalog">Каталог задач</a><a href="#workspace" data-nav="workspace">Мой кабинет</a><a href="case.html">Как это работает</a></nav>
+    <label class="role-label" hidden>Демо-режим<select id="role"><option value="business">Бизнес · Алия</option><option value="student">Студенческая команда</option></select></label>
     <label class="team-profile" id="team-profile" hidden>Ваша команда<input id="team-name" maxlength="80" value="Orbit" aria-label="Название активной команды"></label>
-    <a class="profile-link" id="student-profile-link" href="#profile" hidden>Мой профиль ↗</a>
+    <a class="profile-link" id="student-profile-link" href="#profile" hidden>Профиль команды ↗</a>
   </header>
   <main id="app" tabindex="-1"></main>
   <footer><span class="brand-small">мост.</span><span>Реальные задачи. Первый профессиональный опыт.</span><span>MVP команды · данные на сервере</span></footer>

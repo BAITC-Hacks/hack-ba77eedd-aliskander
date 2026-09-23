@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { calculateRating, fields } from './rating.js';
 import { describeRating } from './presentation.js';
 import catalog from '../public/catalog-engine.cjs';
+import milestones from '../public/milestones.cjs';
 import { calculateMatch, normalizeProfile, validateTaskMatchFields } from './match.js';
 
 export class ApiError extends Error {
@@ -38,6 +39,7 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
   state.stages ??= [];
   state.students ??= {};
   state.savedTasks ??= {};
+  state.accounts ??= [];
   if (!state.students || typeof state.students !== 'object' || Array.isArray(state.students)) throw new Error('Некорректные профили');
   if (!Array.isArray(state.stages)) throw new Error('Некорректные этапы в файле данных');
   function commit(next) {
@@ -50,12 +52,12 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
     const found = state.tasks.find(item => item.id === id);
     if (!found) throw new ApiError(404, 'Задача не найдена');
     const proposals = state.proposals.filter(p => p.taskId === id);
-    return { ...found, ...describeRating(found), canApply: catalog.canApply(found), offerCount: proposals.length, applicantsCount: new Set(proposals.map(p => p.teamId || p.id)).size };
+    return { ...found, stagePlan: found.stagePlan || JSON.stringify(milestones.defaults(found)), ...describeRating(found), canApply: catalog.canApply(found), offerCount: proposals.length, applicantsCount: new Set(proposals.map(p => p.teamId || p.id)).size };
   }
   function studentProfile(id) {
     const saved = Object.hasOwn(state.students, id) ? state.students[id] : normalizeProfile({});
     const seen = new Set();
-    const completedTasks = state.stages.filter(s => s.teamId === id && s.status === 'approved' && !seen.has(s.taskId) && seen.add(s.taskId)).map(s => {
+    const completedTasks = state.stages.filter(s => s.teamId === id && s.status === 'approved' && state.stages.filter(other=>other.taskId===s.taskId && other.teamId===id).every(other=>other.status==='approved') && !seen.has(s.taskId) && seen.add(s.taskId)).map(s => {
       const t = task(s.taskId);
       return { title: t.title, skills: t.requiredSkills || [], category: t.category || '', completed: true, url: s.url || '' };
     });
@@ -72,8 +74,8 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
     const chosen = offers.filter(p => ids.includes(p.id));
     const teams = new Map(chosen.map(p => [p.teamId || p.id, p]));
     const item = { ...current, selectionDone: true, selectedTeamIds: [...teams.keys()], selectedProposalIds: ids };
-    const stages = [...teams.entries()].map(([teamId, p]) => ({ id: randomUUID(), taskId, teamId, team: p.teamName,
-      title: 'Демонстрация рабочего прототипа', points: 100, status: 'in_progress', result: '', url: '', feedback: '' }));
+    const plan = milestones.parse(current.stagePlan, current);
+    const stages = [...teams.entries()].flatMap(([teamId,p])=>plan.map((step,index)=>({...step,id:randomUUID(),taskId,teamId,team:p.teamName,order:index+1,agreed:false,status:'in_progress',result:'',url:'',feedback:''})));
     commit({ ...state,
       tasks: state.tasks.map(t => t.id === taskId ? item : t),
       proposals: state.proposals.map(p => p.taskId === taskId ? { ...p, status: ids.includes(p.id) ? 'selected' : 'rejected' } : p),
@@ -81,8 +83,17 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
     });
     return task(taskId);
   }
-  const taskKeys = ['title', 'company', 'category', 'deadline', 'need', 'interactionFormat', 'requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'requiredHours', 'durationWeeks', 'teamSize', 'workFormat', 'applicationDeadline', 'aiSession', 'aiAssumptions', 'aiMissingInfo', ...Object.keys(fields)];
+  const taskKeys = ['title', 'company', 'category', 'deadline', 'need', 'interactionFormat', 'requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'requiredHours', 'durationWeeks', 'teamSize', 'workFormat', 'applicationDeadline', 'stagePlan', 'aiSession', 'aiAssumptions', 'aiMissingInfo', ...Object.keys(fields)];
   return {
+    findAccount(login) { const found=state.accounts.find(a=>a.login===login); return found?{...found}:null; },
+    createAccount(account) { if(state.accounts.some(a=>a.login===account.login))throw new ApiError(409,'Этот логин уже занят'); commit({...state,accounts:[...state.accounts,{...account}]}); return {...account}; },
+    getProposal(id) { const found=state.proposals.find(p=>p.id===id); if(!found)throw new ApiError(404,'Отклик не найден'); return {...found}; },
+    getStage(id) { const found=state.stages.find(p=>p.id===id); if(!found)throw new ApiError(404,'Этап не найден'); return {...found}; },
+    acceptPlan(taskId,teamId) {
+      if(!state.stages.some(s=>s.taskId===taskId&&s.teamId===teamId))throw new ApiError(403,'Команда не выбрана для этой задачи');
+      const agreedAt=new Date().toISOString();
+      commit({...state,stages:state.stages.map(s=>s.taskId===taskId&&s.teamId===teamId?{...s,agreed:true,agreedAt:s.agreedAt||agreedAt}:s)}); return {taskId,teamId,agreed:true};
+    },
     queryCatalog(query, studentId) {
       const counts = new Map(), applicants = new Map();
       for (const p of state.proposals) { counts.set(p.taskId, (counts.get(p.taskId)||0)+1); if (!applicants.has(p.taskId)) applicants.set(p.taskId,new Set()); applicants.get(p.taskId).add(p.teamId||p.id); }
@@ -119,6 +130,8 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
     submitStage(id, input) {
       const old = state.stages.find(stage => stage.id === id);
       if (!old) throw new ApiError(404, 'Этап не найден');
+      if(old.agreed===false)throw new ApiError(409,'Сначала согласуйте этапы проекта');
+      if(state.stages.some(s=>s.taskId===old.taskId&&s.teamId===old.teamId&&s.order<old.order&&s.status!=='approved'))throw new ApiError(409,'Сначала завершите предыдущий этап');
       if (!['in_progress', 'revision'].includes(old.status)) throw new ApiError(409, 'Этап уже отправлен или подтверждён');
       const values = strings(input, ['result', 'url']);
       if (!values.result || !values.url) throw new ApiError(400, 'Добавьте описание и ссылку на результат');
@@ -144,27 +157,31 @@ export function createStore(file, initialState = { tasks: [], proposals: [], sta
       return state.tasks.filter(item => !publishedOnly || item.published)
         .map(item => task(item.id)).sort((a, b) => b.score - a.score);
     },
-    createTask(input) {
+    createTask(input, ownerId = 'business-1') {
       const values = strings(input, taskKeys);
       validateTaskMatchFields(values);
       try { catalog.validateFields(values); } catch (error) { throw new ApiError(400,error.message); }
       const item = { ...Object.fromEntries(taskKeys.map(key => [key, ''])), ...values,
-        id: randomUUID(), published: false, createdAt: new Date().toISOString() };
+        id: randomUUID(), ownerId, published: false, createdAt: new Date().toISOString() };
+      try { item.stagePlan=JSON.stringify(milestones.parse(item.stagePlan,item)); } catch(error){throw new ApiError(400,error.message);}
       Object.assign(item, calculateRating(item));
       commit({ ...state, tasks: [...state.tasks, item] });
       return task(item.id);
     },
     updateTask(id, input) {
+      if(task(id).selectionDone)throw new ApiError(409,'После выбора команд условия проекта зафиксированы');
       const values = strings(input, taskKeys);
       validateTaskMatchFields(values);
       try { catalog.validateFields(values); } catch (error) { throw new ApiError(400,error.message); }
       const item = { ...task(id), ...values };
+      try { item.stagePlan=JSON.stringify(milestones.parse(item.stagePlan,item)); } catch(error){throw new ApiError(400,error.message);}
       Object.assign(item, calculateRating(item));
       commit({ ...state, tasks: state.tasks.map(old => old.id === id ? item : old) });
       return task(id);
     },
     publishTask(id) {
       const old = task(id);
+      if(!old.title.trim() || !old.context.trim())throw new ApiError(400,'Укажите название и контекст задачи');
       const item = { ...old, published: true, publishedAt: old.publishedAt || new Date().toISOString() };
       commit({ ...state, tasks: state.tasks.map(old => old.id === id ? item : old) });
       return task(id);

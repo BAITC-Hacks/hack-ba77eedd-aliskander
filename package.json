@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.9" },
+  "engines": {
+    "node": ">=22.9"
+  },
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
     "test": "node --test",
-    "lint": "node --check src/rating.js && node --check src/presentation.js && node --check src/sample-data.js && node --check src/store.js && node --check src/server.js && node --check src/ai.js && node --check src/match.js && node --check public/match-engine.cjs && node --check public/match-demo.cjs && node --check public/match-ui.js && node --check public/catalog-engine.cjs && node --check public/catalog-demo.cjs && node --check public/catalog-components.js && node --check public/catalog-page.js && node --check public/app.js && node --check public/api-client.js && node --check public/demo-api.js && node --check public/draft-autosave.js && node --check public/team-session.js && node --check public/ai-components.js && node --check public/ai-flow.js && node --check public/demo-ai.js"
+    "lint": "node scripts/check-syntax.mjs"
   }
 }

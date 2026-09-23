@@ -8,7 +8,7 @@
   const remember = id => { draftId = id; try { if (id) localStorage.setItem(draftKey, id); else localStorage.removeItem(draftKey); } catch (_) {} };
   const route = id => encodeURIComponent(id);
   const keys = { context: 'problem', expectedResult: 'outcome', successCriteria: 'success' };
-  const extraKeys = ['requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'requiredHours', 'durationWeeks', 'teamSize', 'workFormat', 'applicationDeadline', 'createdAt', 'publishedAt', 'aiSession', 'aiAssumptions', 'aiMissingInfo'];
+  const extraKeys = ['requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'requiredHours', 'durationWeeks', 'teamSize', 'workFormat', 'applicationDeadline', 'createdAt', 'publishedAt', 'stagePlan', 'aiSession', 'aiAssumptions', 'aiMissingInfo'];
   const extras = value => Object.fromEntries(extraKeys.map(key => [key, value[key] || '']));
   const toServer = d => ({ ...extras(d), title: d.title || '', company: d.company || '', category: d.category || '', deadline: d.deadline || '',
     context: d.problem || '', expectedResult: d.outcome || '', successCriteria: d.success || '', data: d.data || '',
@@ -22,7 +22,7 @@
     if (!response.ok) { const error = new Error(result.error || 'Не удалось выполнить запрос'); error.status = response.status; throw error; }
     return result;
   }
-  const rating = raw => ({ total: raw.score, level: raw.level, missingDetails: raw.missingDetails || [],
+  const rating = raw => ({ assessmentSource: raw.assessmentSource, total: raw.score, level: raw.level, missingDetails: raw.missingDetails || [],
     breakdown: (raw.breakdown || []).map(c => ({ ...c, key: keys[c.key] || c.key })),
     hints: (raw.breakdown || []).filter(c => c.points < c.max).map(c => c.hint)
   });
@@ -30,7 +30,7 @@
     category: raw.category || 'Исследования', deadline: raw.deadline || '', problem: raw.context || '',
     outcome: raw.expectedResult || '', success: raw.successCriteria || '', data: raw.data || '',
     need: raw.need || '', interactionFormat: raw.interactionFormat || '', constraints: raw.constraints || '', users: raw.users || '', contact: raw.contact || '',
-    ownerId: 'business-1', // Shared demo workspace; replace with authenticated session when available.
+    ownerId: raw.ownerId || '',
     status: !raw.published ? 'draft' : raw.selectionDone ? (raw.selectedTeamIds?.length ? 'in_progress' : 'closed') : 'published',
     selectionDone: Boolean(raw.selectionDone), selectedTeamIds: raw.selectedTeamIds || [], offerCount, rating: rating(raw)
   });
@@ -60,11 +60,12 @@
     listTasks: async () => (await request('/tasks')).map(raw => task(raw)),
     getTask: async id => task(await request('/tasks/' + route(id) + '?studentId=' + route(currentTeam().id))),
     getQuestions: async description => (await request('/questions', 'POST', { context: description })).map(q => ({ ...q, key: keys[q.key] || q.key })),
-    rateTask: async draft => rating(await request('/rating', 'POST', toServer(draft))),
+    rateTask: async draft => rating(window.MostReadiness ? window.MostReadiness.describe(toServer(draft)) : await request('/rating','POST',toServer(draft))),
+    reviewQuality: draft => request('/quality', 'POST', toServer(draft)),
     async getDraft() {
       if (draftId) {
         try { const raw = await request('/tasks/' + route(draftId)); if (!raw.published) return task(raw); }
-        catch (error) { if (error.status !== 404) throw error; }
+        catch (error) { if (![403,404].includes(error.status)) throw error; }
         remember('');
       }
       const drafts = (await request('/tasks?all=true')).filter(t => !t.published);
@@ -100,6 +101,7 @@
         offers: offers.filter(o => o.teamId === currentTeam().id), stages: stages.filter(s => s.teamId === currentTeam().id)
       };
     },
+    acceptPlan: id => request('/tasks/'+route(id)+'/plan/accept','POST',{teamId:currentTeam().id}),
     submitStage: (id, data) => request('/stages/' + route(id) + '/submit', 'POST', data),
     reviewStage: (id, approved, feedback) => request('/stages/' + route(id) + '/review', 'POST', { approved, feedback })
   };
