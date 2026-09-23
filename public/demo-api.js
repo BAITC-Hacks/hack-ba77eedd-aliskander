@@ -1,4 +1,4 @@
-﻿/* DEMO ADAPTER. Replace window.platformApi with your backend adapter.
+/* DEMO ADAPTER. Replace window.platformApi with your backend adapter.
    All methods return Promises. This file is a browser-only simulation, not a backend. */
 (() => {
   'use strict';
@@ -34,6 +34,9 @@
   let db;
   try { db = JSON.parse(localStorage.getItem(KEY)); } catch (_) { /* Memory fallback below. */ }
   if (!db || !Array.isArray(db.tasks) || !Array.isArray(db.offers) || !Array.isArray(db.stages)) db = copy(seed);
+  db.students ??= {};
+  if (window.MostMatchDemo && !db.tasks.some(t => t.id === window.MostMatchDemo.task.id)) db.tasks.push(copy(window.MostMatchDemo.task));
+  const studentProfile = () => ({ ...(Object.hasOwn(db.students, currentTeam().id) ? copy(db.students[currentTeam().id]) : window.MostMatch.profile({})), completedTasks: db.stages.filter(s => s.teamId === currentTeam().id && s.status === 'approved').map(s => { const t = findTask(s.taskId); return { title: t.title, skills: t.requiredSkills || [], category: t.category, completed: true, url: s.url }; }) });
   let persistent = true;
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (_) { persistent = false; } };
   save();
@@ -55,6 +58,9 @@
   }
   window.platformApi = {
     meta: { mode: 'demo', get persistent() { return persistent; } },
+    getProfile: asyncMethod(studentProfile),
+    saveProfile: asyncMethod(student => { db.students[currentTeam().id] = window.MostMatch.profile(student); save(); return studentProfile(); }),
+    matchTask: asyncMethod((student, task) => window.MostMatch.calculate(student, task)),
     listTasks: asyncMethod(() => db.tasks.filter(t => t.status !== 'draft').map(withRating).sort((a, b) => b.rating.total - a.rating.total)),
     getTask: asyncMethod(taskId => withRating(findTask(taskId))),
     getQuestions: asyncMethod(description => {
@@ -82,7 +88,10 @@
       const task = findTask(taskId);
       if (task.status !== 'published' || task.selectionDone) throw new Error('Приём предложений завершён.');
 
-      const offer = { ...data, id: id('offer'), taskId, teamId: currentTeam().id, team: currentTeam().name, status: 'pending' };
+      const student = studentProfile();
+      let matchSnapshot = null;
+      try { matchSnapshot = window.MostMatch.calculate(student, task); } catch (_) {} // Match never blocks an offer.
+      const offer = { ...data, id: id('offer'), taskId, teamId: currentTeam().id, team: currentTeam().name, status: 'pending', studentProfile: student, matchSnapshot };
       db.offers.push(offer); save(); return offer;
     }),
     decideOffer: asyncMethod((offerId, status) => {

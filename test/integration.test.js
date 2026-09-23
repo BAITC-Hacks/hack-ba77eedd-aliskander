@@ -173,7 +173,7 @@ test('catalog filters readiness boundaries together with topic and search', () =
   const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   const instrumented = source.replace(/  render\(\);\s*\}\)\(\);\s*$/, '  window.testCatalog = { state, renderCards };\n})();');
   assert.notEqual(instrumented, source);
-  const window = { platformApi: { meta: { persistent: true } }, createDraftAutosave: () => ({}), createAIFlow: () => ({}), addEventListener() {} };
+  const window = { platformApi: { meta: { persistent: true } }, createDraftAutosave: () => ({}), createAIFlow: () => ({}), createMatchUI: () => ({}), addEventListener() {} };
   runInNewContext(instrumented, { window, document: { querySelector: node, addEventListener() {} } });
   const { state, renderCards } = window.testCatalog;
   const tasks = [0, 39, 40, 69, 70, 89, 90, 100].map(score => ({ id: 'task-' + score, title: 'Задача ' + score, company: 'Компания',
@@ -189,9 +189,10 @@ test('catalog filters readiness boundaries together with topic and search', () =
 test('offline demo supports the same repeated-offer decisions as the live adapter', async () => {
   const memory = new Map();
   const window = {};
-  const context = { window, setTimeout: callback => setTimeout(callback, 0),
+  const context = { window, URL, setTimeout: callback => setTimeout(callback, 0),
     localStorage: { getItem: key => memory.get(key) || null, setItem: (key, value) => memory.set(key, value) } };
   runInNewContext(readFileSync(new URL('../public/team-session.js', import.meta.url), 'utf8'), context);
+  runInNewContext(readFileSync(new URL('../public/match-engine.cjs', import.meta.url), 'utf8'), context);
   runInNewContext(readFileSync(new URL('../public/demo-api.js', import.meta.url), 'utf8'), context);
   const api = window.platformApi;
   const a = await api.submitOffer('task-1', { approach: 'Новый вариант', plan: 'План', duration: 'Неделя' });
