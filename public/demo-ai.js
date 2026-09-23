@@ -55,5 +55,5 @@
     };
     return { mode: 'demo', provider: 'Демо без AI', status: 'ready', summary: 'Черновик собран из вашей идеи и ответов. Проверьте формулировки перед публикацией.', questions: [], task };
   }
-  window.MostAIDemo = { turn: async input => { await new Promise(resolve => setTimeout(resolve, 550)); return turn(input); } };
+  window.MostAIDemo = { turn: async input => { await new Promise(resolve => setTimeout(resolve, 550)); return window.MostInterview.ensureMinimum(turn(input), input); } };
 })();

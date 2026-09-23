@@ -5,9 +5,9 @@
 })(typeof window === 'object' ? window : globalThis, function (match) {
   'use strict';
   const categories = [['frontend','Frontend'],['backend','Backend'],['fullstack','Fullstack'],['mobile','Mobile'],['ai-ml','AI / ML'],['data-science','Data Science'],['ui-ux','UI / UX'],['devops','DevOps'],['cybersecurity','Cybersecurity'],['other','Other']];
-  const durations = [['under-1','Less than 1 week'],['1-2','1–2 weeks'],['2-4','2–4 weeks'],['4-8','1–2 months'],['8-plus','2+ months']];
-  const teams = [['individual','Individual'],['2-3','2–3 students'],['4-5','4–5 students'],['5-plus','5+ students']];
-  const sorts = [['match','Best Match'],['newest','Newest'],['popular','Most Popular'],['deadline','Deadline Soon'],['difficulty','Difficulty: Easy → Hard'],['duration','Duration: Shortest'],['rating','Readiness rating']];
+  const durations = [['under-1','Меньше недели'],['1-2','1–2 недели'],['2-4','2–4 недели'],['4-8','1–2 месяца'],['8-plus','Больше 2 месяцев']];
+  const teams = [['individual','Один участник'],['2-3','2–3 участника'],['4-5','4–5 участника'],['5-plus','5+ участника']];
+  const sorts = [['rating','По готовности'],['match','По соответствию команде'],['newest','Сначала новые'],['popular','По числу откликов'],['deadline','Скоро закрытие'],['difficulty','Сначала простые'],['duration','Сначала короткие']];
   const standardSkills = ['React','TypeScript','Python','FastAPI','Java','Spring Boot','PostgreSQL','Docker','Figma','Machine Learning','REST API','Node.js','Kubernetes','SQL'];
   const norm = value => String(value || '').normalize('NFKC').trim().toLowerCase();
   const category = value => {
@@ -106,7 +106,8 @@
     }).map(t=>enrich(t,{...context,now,matchAvailable:ready})).filter(t =>
       (!q.saved || t.isSaved) && (!q.status.length || q.status.some(s=>s==='open'?t.canApply:s==='closing'?t.isClosingSoon:t.isNew)) &&
       (!(q.minMatch || q.recommended) || (t.matchScore !== null && t.matchScore >= Math.max(Number(q.minMatch)||0,q.recommended?75:0))));
-    const sort = (q.sort || (ready?'match':'newest')) === 'match' && !ready ? 'newest' : q.sort || (ready?'match':'newest');
+    const requestedSort=q.sort||(q.recommended&&ready?'match':'rating');
+    const sort=requestedSort==='match'&&!ready?'rating':requestedSort;
     const date = t => Number.isFinite(Date.parse(t.publishedAt || t.createdAt)) ? Date.parse(t.publishedAt || t.createdAt) : -Infinity;
     const cmp = (a,b) => {
       if (sort === 'match') return (b.matchScore ?? -1)-(a.matchScore ?? -1);

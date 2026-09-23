@@ -1,5 +1,6 @@
 ﻿// Expose the team's existing rating without duplicating its weights in the browser.
 import { calculateRating, fields, levelForScore } from './rating.js';
+import readiness from '../public/readiness-engine.cjs';
 const extraFields = { need: ['Потребность бизнеса'], interactionFormat: ['Формат взаимодействия'] };
 const questions = {
   context: 'Какая проблема возникает сейчас и кого она затрагивает?',
@@ -13,11 +14,7 @@ const questions = {
   contact: 'Как команда сможет связаться с представителем бизнеса?'
 };
 export function describeRating(input) {
-  return { ...calculateRating(input), breakdown: Object.entries(fields).map(([key, [label, max]]) => ({
-    key, label, max, points: typeof input[key] === 'string' && input[key].trim() ? max : 0,
-    hint: questions[key]
-  })), missingDetails: Object.entries(extraFields).filter(([key]) => !String(input[key] || '').trim())
-    .map(([key, [label]]) => ({ key, label, hint: questions[key] })) };
+  return readiness.describe(input);
 }
 export async function describeAIRating(input, ai) {
   // Keep the local/demo installation usable without a configured provider. In a

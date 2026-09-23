@@ -6,17 +6,10 @@
   const KEY = 'most-frontend-demo-v1';
   const copy = value => JSON.parse(JSON.stringify(value));
   const id = prefix => prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
-  const criteria = [
-    { key: 'problem', label: 'Понятная проблема', max: 20, min: 30, hint: 'Что сейчас не работает и на кого это влияет? Добавьте конкретный пример.' },
-    { key: 'outcome', label: 'Ожидаемый результат', max: 20, min: 20, hint: 'Опишите, что команда должна передать: прототип, сайт, исследование или другой результат.' },
-    { key: 'success', label: 'Критерии успеха', max: 20, min: 20, hint: 'Как вы проверите результат? Укажите измеримый показатель или сценарий приёмки.' },
-    { key: 'data', label: 'Доступные данные', max: 15, min: 15, hint: 'Какие данные, материалы и доступы вы предоставите команде?' },
-    { key: 'deadline', label: 'Срок выполнения', max: 15, min: 3, hint: 'Укажите ожидаемый срок выполнения или дату демонстрации.' },
-    { key: 'constraints', label: 'Условия и ограничения', max: 10, min: 15, hint: 'Укажите бюджет, ограничения по технологиям и формат взаимодействия.' }
-  ];
   function rate(task) {
-    const breakdown = criteria.map(c => ({ ...c, points: String(task[c.key] || '').trim().length >= c.min ? c.max : 0 }));
-    return { missingDetails: ['need', 'interactionFormat'].filter(key => !String(task[key] || '').trim()).map(key => ({ key, label: key === 'need' ? 'Потребность бизнеса' : 'Формат взаимодействия', hint: key === 'need' ? 'Какую потребность нужно закрыть?' : 'Как будете общаться с командой?' })), total: breakdown.reduce((n, c) => n + c.points, 0), breakdown, hints: breakdown.filter(c => !c.points).map(c => c.hint) };
+    const keys = {context:'problem', expectedResult:'outcome', successCriteria:'success'};
+    const raw = window.MostReadiness.describe({...task, context:task.problem, expectedResult:task.outcome, successCriteria:task.success});
+    return {...raw, total:raw.score, breakdown:raw.breakdown.map(c=>({...c,key:keys[c.key]||c.key})), hints:raw.breakdown.filter(c=>!c.points).map(c=>c.hint)};
   }
   const base = { ownerId: 'business-1', status: 'published', success: 'Прототип проходит пять согласованных сценариев; результаты фиксируются на демонстрации.', data: 'Предоставим обезличенные данные и консультации сотрудника компании.', constraints: 'Учебный проект без оплаты. Еженедельная встреча, стек на выбор команды.', selectedTeamIds: [], selectionDone: false };
   const tasks = [
@@ -34,6 +27,11 @@
   let db;
   try { db = JSON.parse(localStorage.getItem(KEY)); } catch (_) { /* Memory fallback below. */ }
   if (!db || !Array.isArray(db.tasks) || !Array.isArray(db.offers) || !Array.isArray(db.stages)) db = copy(seed);
+  if(window.MostDefenseCase && !db.tasks.some(t=>t.id===window.MostDefenseCase.task.id)){
+    db.tasks.push(copy(window.MostDefenseCase.task));
+    const root=typeof location==='object'?location.href:'http://localhost:3000/demo.html';
+    db.offers.push(...window.MostDefenseCase.offers.map(offer=>({...copy(offer),prototypeUrl:new URL(offer.prototypePath,root).href})));
+  }
   db.students ??= {};
   db.savedTasks ??= {};
   if (window.MostCatalogDemo) {
@@ -41,7 +39,7 @@
     for (const t of examples.tasks) if (!db.tasks.some(old=>old.id===t.id)) { db.tasks.push(t); db.offers.push(...examples.offers.filter(o=>o.taskId===t.id)); }
   }
   if (window.MostMatchDemo && !db.tasks.some(t => t.id === window.MostMatchDemo.task.id)) db.tasks.push(copy(window.MostMatchDemo.task));
-  const studentProfile = () => ({ ...(Object.hasOwn(db.students, currentTeam().id) ? copy(db.students[currentTeam().id]) : window.MostMatch.profile({})), completedTasks: db.stages.filter(s => s.teamId === currentTeam().id && s.status === 'approved').map(s => { const t = findTask(s.taskId); return { title: t.title, skills: t.requiredSkills || [], category: t.category, completed: true, url: s.url }; }) });
+  const studentProfile = () => ({ ...(Object.hasOwn(db.students, currentTeam().id) ? copy(db.students[currentTeam().id]) : window.MostMatch.profile({})), completedTasks: db.stages.filter((s,i,all) => s.teamId === currentTeam().id && s.status === 'approved' && all.filter(other=>other.taskId===s.taskId&&other.teamId===s.teamId).every(other=>other.status==='approved') && all.findIndex(other=>other.taskId===s.taskId&&other.teamId===s.teamId)===i).map(s => { const t = findTask(s.taskId); return { title: t.title, skills: t.requiredSkills || [], category: t.category, completed: true, url: s.url }; }) });
   let persistent = true;
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (_) { persistent = false; } };
   save();
@@ -58,10 +56,19 @@
     task.selectedTeamIds = [...teams.keys()]; task.selectionDone = true;
     task.status = teams.size ? 'in_progress' : 'closed';
     offers.forEach(o => { o.status = proposalIds.includes(o.id) ? 'selected' : 'declined'; });
-    for (const [teamId, offer] of teams) db.stages.push({ id: id('stage'), taskId, teamId, team: offer.team, title: 'Демонстрация рабочего прототипа', points: 100, status: 'in_progress', result: '', url: '', feedback: '' });
+    for (const [teamId,offer] of teams)for(const [index,step] of window.MostMilestones.parse(task.stagePlan,task).entries())db.stages.push({...step,id:id('stage'),taskId,teamId,team:offer.team,order:index+1,agreed:false,status:'in_progress',result:'',url:'',feedback:''});
     save(); return withRating(task);
   }
   window.platformApi = {
+    startCase: asyncMethod(()=>{
+      const sample=window.MostDefenseCase;const task={...copy(sample.task),id:id('defense-case'),stagePlan:JSON.stringify(window.MostMilestones.defaults(sample.task))};
+      const root=typeof location==='object'?location.href:'http://localhost:3000/demo.html';db.tasks.unshift(task);
+      for(const proposal of sample.offers){
+        const student=window.MostMatch.profile({name:proposal.team,members:[{name:proposal.team==='Orbit'?'Алия':'Дана',role:'Интерфейс',skills:['HTML','CSS'],level:'Intermediate',availabilityHours:10},{name:proposal.team==='Orbit'?'Тимур':'Арман',role:'Разработка',skills:['JavaScript'],level:'Intermediate',availabilityHours:8}],interests:['Frontend'],experience:['Прототип на HTML, CSS и JavaScript']});
+        db.offers.push({...copy(proposal),id:id('case-offer'),taskId:task.id,studentProfile:student,matchSnapshot:window.MostMatch.calculate(student,task),prototypeUrl:new URL(proposal.prototypePath,root).href});
+      }
+      save();return withRating(task);
+    }),
     meta: { mode: 'demo', get persistent() { return persistent; } },
     getProfile: asyncMethod(studentProfile),
     saveProfile: asyncMethod(student => { db.students[currentTeam().id] = window.MostMatch.profile(student); save(); return studentProfile(); }),
@@ -113,9 +120,10 @@
     getWorkspace: asyncMethod(role => role === 'business'
       ? { tasks: db.tasks.filter(t => t.ownerId === 'business-1').map(withRating), offers: db.offers, stages: db.stages.filter(s => findTask(s.taskId).ownerId === 'business-1') }
       : { tasks: db.tasks.filter(t => db.offers.some(o => o.taskId === t.id && o.teamId === currentTeam().id)).map(withRating), offers: db.offers.filter(o => o.teamId === currentTeam().id), stages: db.stages.filter(s => s.teamId === currentTeam().id) }),
+    acceptPlan: asyncMethod(taskId=>{const stages=db.stages.filter(s=>s.taskId===taskId&&s.teamId===currentTeam().id);if(!stages.length)throw new Error('Команда не выбрана');stages.forEach(s=>s.agreed=true);save();return {agreed:true};}),
     submitStage: asyncMethod((stageId, data) => {
       const stage = db.stages.find(s => s.id === stageId);
-      if (!stage || stage.teamId !== currentTeam().id || !['in_progress', 'revision'].includes(stage.status)) throw new Error('Этот этап недоступен для отправки.');
+      if (!stage || stage.agreed===false || db.stages.some(s=>s.taskId===stage.taskId&&s.teamId===stage.teamId&&s.order<stage.order&&s.status!=='approved') || stage.teamId !== currentTeam().id || !['in_progress', 'revision'].includes(stage.status)) throw new Error('Этот этап недоступен для отправки.');
       stage.result = data.result; stage.url = data.url; stage.status = 'pending'; save(); return stage;
     }),
     reviewStage: asyncMethod((stageId, approved, feedback) => {

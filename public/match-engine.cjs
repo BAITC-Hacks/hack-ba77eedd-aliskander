@@ -29,11 +29,24 @@
     if (!obj(raw)) fail('Ожидается профиль студента');
     const projects = raw.projects ?? [];
     if (!Array.isArray(projects) || projects.length > 30) fail('Укажите не больше 30 проектов');
-    return { name: text(raw.name, 'Имя', 100), skills: list(raw.skills, 'Навыки'), experience: list(raw.experience, 'Опыт'),
+    if(raw.members!=null && (!Array.isArray(raw.members)||raw.members.length>20))fail('В команде должно быть не больше 20 участников');
+    const members=(raw.members||[]).map(member=>{
+      if(!obj(member))fail('Некорректный участник команды');
+      const name=text(member.name,'Имя участника',80); if(!name)fail('Укажите имя каждого участника');
+      return {name,role:text(member.role,'Роль участника',100),skills:list(member.skills,'Навыки участника'),level:choice(member.level,['Beginner','Intermediate','Advanced'],'Уровень участника'),availabilityHours:hours(member.availabilityHours,'Часы участника')};
+    });
+    const result = { members, name: text(raw.name, 'Имя', 100), skills: list(raw.members?.length ? [] : raw.skills, 'Навыки'), experience: list(raw.experience, 'Опыт'),
       interests: list(raw.interests, 'Интересы'), level: choice(raw.level, ['Beginner', 'Intermediate', 'Advanced'], 'Уровень'),
       preferredDifficulty: choice(raw.preferredDifficulty, ['Easy', 'Medium', 'Hard'], 'Желаемая сложность'), availabilityHours: hours(raw.availabilityHours, 'Доступность'),
       githubUrl: link(raw.githubUrl), portfolioUrl: link(raw.portfolioUrl), githubTechnologies: list(raw.githubTechnologies, 'Технологии GitHub'),
       projects: projects.map(p => { if (!obj(p) || typeof p.completed !== 'boolean') fail('У проекта нужен статус completed'); return { title: text(p.title, 'Название проекта', 200), skills: list(p.skills, 'Технологии проекта'), category: text(p.category, 'Направление', 100), completed: p.completed, url: link(p.url) }; }) };
+    if(members.length) {
+      result.skills=[...new Map(members.flatMap(m=>m.skills).map(skill=>[canonical(skill),skill])).values()];
+      const levels=['Beginner','Intermediate','Advanced'];
+      result.level=members.every(m=>m.level)?levels[Math.min(...members.map(m=>levels.indexOf(m.level)))]:'';
+      result.availabilityHours=members.every(m=>m.availabilityHours!==null)?Math.min(...members.map(m=>m.availabilityHours)):null;
+    }
+    return result;
   }
   function task(raw) {
     if (!obj(raw)) fail('Ожидается задача');
@@ -51,7 +64,7 @@
     const haystack = phrase.normalize('NFKC').toLowerCase();
     return variants.some(v => new RegExp('(^|[^\\p{L}\\p{N}+#])' + v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=$|[^\\p{L}\\p{N}+#])', 'u').test(haystack));
   };
-  const labelFor = score => score >= 90 ? 'Excellent Match' : score >= 75 ? 'Strong Match' : score >= 60 ? 'Good Match' : score >= 40 ? 'Partial Match' : 'Low Match';
+  const labelFor = score => score >= 90 ? 'Отличное соответствие' : score >= 75 ? 'Высокое соответствие' : score >= 60 ? 'Хорошее соответствие' : score >= 40 ? 'Частичное соответствие' : 'Низкое соответствие';
   function calculate(rawStudent, rawTask) {
     const student = profile(rawStudent), target = task(rawTask);
     if (rawStudent.completedTasks != null) student.projects.push(...profile({ projects: rawStudent.completedTasks }).projects);
@@ -81,7 +94,7 @@
     const contributions = Object.fromEntries(Object.entries(weights).map(([key, weight]) => [key, Math.round(breakdown[key] * weight) / 100]));
     const matchScore = Math.round(Object.entries(weights).reduce((sum, [key, weight]) => sum + breakdown[key] * weight / 100, 0));
     const missingData = [];
-    if (!required.length) missingData.push('Бизнес не указал required skills');
+    if (!required.length) missingData.push('Бизнес не указал необходимые навыки');
     if (!student.skills.length) missingData.push('Добавьте навыки в профиль');
     if (!evidenceTexts.length && !relevantProjects.length) missingData.push('Добавьте опыт и завершённые проекты');
     if (!student.interests.length || !target.category) missingData.push('Не указаны интересы или направление задачи');

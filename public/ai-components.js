@@ -23,7 +23,7 @@
   window.MostAIComponents = {
     lines, tags, taskFromDraft, applyTask, session,
     progress(step) {
-      return `<ol class="ai-progress" aria-label="Этапы создания задачи">${['Describe', 'AI Interview', 'Generated Task', 'Review & Publish'].map((label, i) => `<li class="${step === i + 1 ? 'current' : step > i + 1 ? 'done' : ''}" ${step === i + 1 ? 'aria-current="step"' : ''}><span>${step > i + 1 ? '✓' : i + 1}</span>${label}</li>`).join('')}</ol>`;
+      return `<ol class="ai-progress" aria-label="Этапы создания задачи">${['Описание', 'Уточнение', 'Карточка', 'Публикация'].map((label, i) => `<li class="${step === i + 1 ? 'current' : step > i + 1 ? 'done' : ''}" ${step === i + 1 ? 'aria-current="step"' : ''}><span>${step > i + 1 ? '✓' : i + 1}</span>${label}</li>`).join('')}</ol>`;
     },
     loading(label, detail) { return `<div class="ai-loading" role="status" aria-live="polite"><div class="ai-orb">✦</div><h3>${label}</h3><p class="muted">${detail}</p><div class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></div><div class="ai-skeleton"></div><div class="ai-skeleton short"></div></div>`; },
     skillTags(draft, h) { return `<div class="skill-tags">${tags(draft.requiredSkills).map(tag => `<span>${h(tag)}</span>`).join('') || '<span class="muted">Навыки пока не определены</span>'}</div>`; },

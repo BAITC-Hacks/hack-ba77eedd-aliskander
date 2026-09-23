@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { calculateRating, fields, levelForScore } from '../src/rating.js';
 import { createStore } from '../src/store.js';
-import { createApp } from '../src/server.js';
+import { createApp as createProtectedApp } from '../src/server.js';
+const createApp=(store,ai)=>createProtectedApp(store,ai,{authorize:false});
 import { createSampleData } from '../src/sample-data.js';
 
 test('sample data: seeds two complete tasks and three proposals only when requested', () => {
@@ -81,8 +82,10 @@ test('HTTP demo: persistence, publication, ordering, multiple proposals, manual 
   assert.equal(updated.level, 'Готовая');
   await request(`${path}/publish`, 'POST');
   const low = await request('/tasks', 'POST', {}, 201);
-  await request(`/tasks/${low.id}/publish`, 'POST');
-  assert.deepEqual((await request('/tasks')).map(item => item.score), [75, 0]);
+  await request(`/tasks/${low.id}/publish`, 'POST',undefined,400);
+  await request(`/tasks/${low.id}`,'PATCH',{title:'Новая задача',context:'Требуется описать потребность'});
+  await request(`/tasks/${low.id}/publish`,'POST');
+  assert.deepEqual((await request('/tasks')).map(item => item.score), [75, 20]);
   await request(path, 'PATCH', { constraints: '  ', successCriteria: 'KPI' });
   assert.equal((await request(path)).score, 90);
   await request(path, 'PATCH', { data: ' ' });

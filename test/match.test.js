@@ -1,3 +1,6 @@
+import readiness from '../public/readiness-engine.cjs';
+import milestones from '../public/milestones.cjs';
+import interviewRules from '../public/interview-rules.cjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -8,13 +11,14 @@ import { runInNewContext } from 'node:vm';
 import engine from '../public/match-engine.cjs';
 import demo from '../public/match-demo.cjs';
 import { createStore } from '../src/store.js';
-import { createApp } from '../src/server.js';
+import { createApp as createProtectedApp } from '../src/server.js';
+const createApp=(store,ai)=>createProtectedApp(store,ai,{authorize:false});
 import { createAIService } from '../src/ai.js';
 const copy = value => structuredClone(value);
 
 test('Match demo is deterministically 87 from the exact five weighted criteria', () => {
   const result = engine.calculate(demo.student, demo.task);
-  assert.equal(result.matchScore, 87); assert.equal(result.label, 'Strong Match');
+  assert.equal(result.matchScore, 87); assert.equal(result.label, 'Высокое соответствие');
   assert.deepEqual(result.breakdown, { skills: 80, experience: 92, interest: 100, difficulty: 90, availability: 100 });
   assert.equal(Math.round(Object.entries(result.weights).reduce((n,[k,w]) => n + result.breakdown[k]*w/100, 0)), result.matchScore);
   assert.deepEqual(result.missingSkills, ['Docker']); assert.equal(result.evidence.relevantProjects, 2);
@@ -46,7 +50,7 @@ test('difficulty preferences, hours, score ranges and validation are bounded', (
   assert.equal(engine.calculate({ level: 'Advanced', availabilityHours: 15 }, target).breakdown.availability, 100);
   assert.equal(engine.calculate({ level: 'Advanced', availabilityHours: 0 }, target).breakdown.availability, 0);
   assert.equal(engine.calculate({ level: 'Advanced', preferredDifficulty: 'Easy' }, target).breakdown.difficulty, 70);
-  for (const [score,label] of [[0,'Low Match'],[39,'Low Match'],[40,'Partial Match'],[59,'Partial Match'],[60,'Good Match'],[74,'Good Match'],[75,'Strong Match'],[89,'Strong Match'],[90,'Excellent Match'],[100,'Excellent Match']]) assert.equal(engine.labelFor(score), label);
+  for (const [score,label] of [[0,'Низкое соответствие'],[39,'Низкое соответствие'],[40,'Частичное соответствие'],[59,'Частичное соответствие'],[60,'Хорошее соответствие'],[74,'Хорошее соответствие'],[75,'Высокое соответствие'],[89,'Высокое соответствие'],[90,'Отличное соответствие'],[100,'Отличное соответствие']]) assert.equal(engine.labelFor(score), label);
   for (const hours of [-1, 169, 'ten', Infinity]) assert.throws(() => engine.calculate({ availabilityHours: hours }, target));
   for (const malformed of [{ skills: [1] }, { level: 'Expert' }, { githubUrl: 'javascript:alert(1)' }, { projects: [{ completed: 'true' }] }]) assert.throws(() => engine.profile(malformed));
   for (const level of ['', 'Beginner','Intermediate','Advanced']) for (const difficulty of ['', 'Easy','Medium','Hard']) for (const hours of [null,0,5,168]) {
@@ -58,7 +62,7 @@ test('difficulty preferences, hours, score ranges and validation are bounded', (
 test('browser demo uses the identical engine, persists profiles and captures proposal Match', async () => {
   const memory = new Map();
   function browser() {
-    const window = { platformTeam: { current: { id: 'team-orbit', name: 'Orbit' } } };
+    const window = { MostReadiness:readiness,MostMilestones:milestones,platformTeam: { current: { id: 'team-orbit', name: 'Orbit' } } };
     const context = { window, URL, setTimeout: callback => setTimeout(callback, 0), localStorage: { getItem: k => memory.get(k) || null, setItem: (k,v) => memory.set(k,v) } };
     for (const file of ['match-engine.cjs', 'match-demo.cjs', 'demo-api.js']) runInNewContext(readFileSync(new URL('../public/' + file, import.meta.url), 'utf8'), context);
     return window;
@@ -115,9 +119,12 @@ test('HTTP Match, profile persistence, server snapshots and advisory scores pres
   assert.equal(store.listProposals(task.id)[0].matchSnapshot.matchScore, 87, 'Snapshot survives later profile edits');
   await request('/api/tasks', 'POST', { requiredHours: '-10' }, 400);
   store.selectProposals(task.id, [offer.id]);
+  store.acceptPlan(task.id,team);
   const stage = store.listStages()[0]; store.submitStage(stage.id, { result: 'CRM готова', url: 'https://example.com/crm' });
   assert.equal(store.getStudentProfile(team).completedTasks.length, 0);
   store.reviewStage(stage.id, { approved: true });
+  assert.equal(store.getStudentProfile(team).completedTasks.length,0,'One accepted stage is not a completed project');
+  for(const next of store.listStages().slice(1)){store.submitStage(next.id,{result:'Результат этапа',url:'https://example.com/crm'});store.reviewStage(next.id,{approved:true});}
   assert.equal(store.getStudentProfile(team).completedTasks.length, 1);
   const withProgress = engine.calculate(store.getStudentProfile(team), demo.task);
   assert.ok(withProgress.breakdown.experience > 0); assert.equal(store.getTask(task.id).selectionDone, true);
@@ -148,8 +155,8 @@ test('Match UI ignores stale calculations and opens escaped, labelled details fo
   const task = { ...demo.task, title: '<img src=x onerror=alert(1)>' };
   const pending = ui.attach([task]); await new Promise(setImmediate); state.ticket++;
   resolveMatch(engine.calculate(demo.student, task)); await pending; assert.equal(node.innerHTML, '');
-  await ui.attach([task]); assert.ok(node.innerHTML.includes('87% Match')); assert.ok(node.innerHTML.includes('Strong Match')); assert.ok(node.innerHTML.includes('⚠ Docker'));
+  await ui.attach([task]); assert.ok(node.innerHTML.includes('87% соответствия')); assert.ok(node.innerHTML.includes('Высокое соответствие')); assert.ok(node.innerHTML.includes('⚠ Docker'));
   click({ preventDefault() {}, target: { closest: selector => selector === '[data-match-details]' ? { dataset: { matchDetails: 'task:' + task.id } } : null } });
-  assert.equal(dialog.open, true); assert.ok(dialog.innerHTML.includes('Skills Match')); assert.ok(dialog.innerHTML.includes('18.4 из 20')); assert.ok(!dialog.innerHTML.includes('<img'));
+  assert.equal(dialog.open, true); assert.ok(dialog.innerHTML.includes('Навыки')); assert.ok(dialog.innerHTML.includes('18.4 из 20')); assert.ok(!dialog.innerHTML.includes('<img'));
   assert.ok(ui.offer(null, null, task, 'old').includes('не приложен'));
 });

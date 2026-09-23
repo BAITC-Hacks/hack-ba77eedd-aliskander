@@ -1,3 +1,6 @@
+import readiness from '../public/readiness-engine.cjs';
+import milestones from '../public/milestones.cjs';
+import interviewRules from '../public/interview-rules.cjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -7,7 +10,8 @@ import { once } from 'node:events';
 import { runInNewContext } from 'node:vm';
 import { createAIService, validateInput, validateOutput, responseSchema, readinessSchema } from '../src/ai.js';
 import { createStore } from '../src/store.js';
-import { createApp } from '../src/server.js';
+import { createApp as createProtectedApp } from '../src/server.js';
+const createApp=(store,ai)=>createProtectedApp(store,ai,{authorize:false});
 
 const description = 'Нам нужен Telegram-бот для записи клиентов в барбершоп. Срок — 3 недели.';
 const question = key => ({ id: key, key, label: 'Уточните ' + key, chips: ['Первый вариант', 'Второй вариант'] });
@@ -124,7 +128,7 @@ test('AI HTTP endpoints, regeneration context and draft persistence never publis
 });
 
 test('offline interview respects known details and structured draft mapping preserves edits and undo', async () => {
-  const window = {};
+  const window = {MostReadiness:readiness,MostMilestones:milestones,MostInterview:interviewRules};
   const context = { window, setTimeout: callback => setTimeout(callback, 0) };
   runInNewContext(readFileSync(new URL('../public/demo-ai.js', import.meta.url), 'utf8'), context);
   runInNewContext(readFileSync(new URL('../public/ai-components.js', import.meta.url), 'utf8'), context);
@@ -154,7 +158,7 @@ test('offline interview respects known details and structured draft mapping pres
 });
 
 test('demo keeps unknown facts missing without repeating a question', async () => {
-  const window = {};
+  const window = {MostReadiness:readiness,MostMilestones:milestones,MostInterview:interviewRules};
   runInNewContext(readFileSync(new URL('../public/demo-ai.js', import.meta.url), 'utf8'), { window, setTimeout: callback => setTimeout(callback, 0) });
   let result = await window.MostAIDemo.turn({ action: 'analyze', description });
   const answers = [];

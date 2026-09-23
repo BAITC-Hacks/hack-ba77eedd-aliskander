@@ -15,7 +15,7 @@
       document.querySelector('#filter-count').textContent=countFilters(a.q)||'';
       const filters=document.querySelector('#catalog-filters');
       filters.querySelectorAll('[data-filter]').forEach(input=> { const key=input.dataset.filter; if (input.type==='checkbox') input.checked=Array.isArray(a.q[key])?a.q[key].includes(input.value):Boolean(a.q[key]); else input.value=a.q[key]; });
-      document.querySelector('#catalog-sort').value=a.q.sort||a.effectiveSort||'newest';
+      document.querySelector('#catalog-sort').value=a.q.sort||a.effectiveSort||'rating';
     }
     function change(patch, {replace=false,clear=false}={}) {
       const a=active; if(!a)return;
@@ -41,13 +41,13 @@
         a.items.forEach(task=>knownTasks.set(task.id,task));
         a.pagination=result.pagination;
         grid.innerHTML=a.items.length?a.items.map(t=>views.TaskCard(t,a.student)).join(''):views.EmptyState(a.q);
-        document.querySelector('#catalog-count').textContent=`${result.pagination.total} tasks found`;
-        document.querySelector('#catalog-mode').textContent=a.student?(result.matchAvailable?'Match рассчитан по вашему профилю':'Заполните навыки и уровень в профиле для Match'):'Все опубликованные задачи';
+        document.querySelector('#catalog-count').textContent=`Найдено задач: ${result.pagination.total}`;
+        document.querySelector('#catalog-mode').textContent=a.student?(result.matchAvailable?'Соответствие рассчитано по вашему профилю':'Заполните состав и навыки команды'):'Все опубликованные задачи';
         document.querySelector('#show-filter-results').textContent=`Показать ${result.pagination.total} задач`;
         document.querySelector('#catalog-sort').value=result.sort;
         if(!a.facetsReady){ document.querySelector('#catalog-filters').innerHTML=views.TaskFilters(a.q,result.facets,a.student); a.facetsReady=true; }
         sync(a);
-        document.querySelector('#catalog-pagination').innerHTML=`<p>Показано ${a.items.length} из ${result.pagination.total}</p>${result.pagination.hasMore?'<button class="btn secondary" type="button" id="load-more-tasks">Load More ↓</button>':''}${a.startedPage>1?'<button type="button" class="catalog-clear" id="catalog-first-page">К первой странице</button>':''}`;
+        document.querySelector('#catalog-pagination').innerHTML=`<p>Показано ${a.items.length} из ${result.pagination.total}</p>${result.pagination.hasMore?'<button class="btn secondary" type="button" id="load-more-tasks">Показать ещё ↓</button>':''}${a.startedPage>1?'<button type="button" class="catalog-clear" id="catalog-first-page">К первой странице</button>':''}`;
         document.querySelector('#load-more-tasks')?.addEventListener('click',()=>{a.q.page++;url(a.q);load(a,true);});
         document.querySelector('#catalog-first-page')?.addEventListener('click',()=>{a.startedPage=1;change({});});
       } catch(err) {
@@ -58,7 +58,7 @@
         document.querySelector('#catalog-count').textContent='Не удалось загрузить задачи';
         error.hidden=false;error.innerHTML=`<div class="catalog-fetch-error"><strong>Попробуем ещё раз?</strong><p>${h(err.message||'Ошибка загрузки')}</p><button class="btn secondary small" type="button" id="retry-catalog">Повторить</button></div>`;
         document.querySelector('#retry-catalog').onclick=()=>{if(append)a.q.page++;load(a,append);};
-        const button=document.querySelector('#load-more-tasks'); if(button){button.disabled=false;button.textContent='Load More ↓';}
+        const button=document.querySelector('#load-more-tasks'); if(button){button.disabled=false;button.textContent='Показать ещё ↓';}
       } finally {if(valid())grid.setAttribute('aria-busy','false');}
     }
     async function render(query,ticket) {
@@ -71,7 +71,7 @@
       filterRoot.addEventListener('change',event=>{
         const input=event.target.closest('[data-filter]');if(!input)return;const key=input.dataset.filter;
         const next=Array.isArray(a.q[key])?(input.checked?[...a.q[key],input.value]:a.q[key].filter(v=>v!==input.value)):input.type==='checkbox'?input.checked:input.value;
-        change({[key]:next});
+        change(key==='recommended'?{recommended:next,sort:next?'match':'rating'}:{[key]:next});
       });
       filterRoot.addEventListener('input',event=>{if(event.target.id!=='skill-filter-search')return;const term=event.target.value.toLowerCase();filterRoot.querySelectorAll('[data-skill-label]').forEach(label=>{label.hidden=!label.dataset.skillLabel.includes(term);});});
       const dialog=document.querySelector('#catalog-filter-dialog');
@@ -100,7 +100,7 @@
     });
     function detail(task,student) {
       knownTasks.set(task.id,task);
-      return `<section class="catalog-detail-summary"><div><span class="eyebrow muted">Условия участия</span><strong class="apply-state ${task.canApply!==false?'open':'closed'}">${task.canApply!==false?'● Приём открыт':'○ Приём завершён'}</strong></div>${views.SavedButton(task,student)}<dl><div><dt>Duration</dt><dd>${h(task.deadline||'Уточняется')}</dd></div><div><dt>Team</dt><dd>${h(views.teamText(task))}</dd></div><div><dt>Format</dt><dd>${h(task.workFormat||'Уточняется')}</dd></div><div><dt>Applicants</dt><dd>${task.applicantsCount||0} команд</dd></div><div><dt>Application deadline</dt><dd>${h(views.deadlineText(task))}${task.applicationDeadline?` · ${h(task.applicationDeadline)}`:''}</dd></div></dl>${student?`<button class="btn small" type="button" data-match-apply="${h(task.id)}" ${task.canApply===false?'disabled':''}>${task.canApply===false?'Apply closed':'Apply →'}</button>`:''}</section>`;
+      return `<section class="catalog-detail-summary"><div><span class="eyebrow muted">Условия участия</span><strong class="apply-state ${task.canApply!==false?'open':'closed'}">${task.canApply!==false?'● Приём открыт':'○ Приём завершён'}</strong></div>${views.SavedButton(task,student)}<dl><div><dt>Длительность</dt><dd>${h(task.deadline||'Уточняется')}</dd></div><div><dt>Команда</dt><dd>${h(views.teamText(task))}</dd></div><div><dt>Формат</dt><dd>${h(({Remote:'Удалённо',Hybrid:'Гибрид','On-site':'Очно'})[task.workFormat]||'Уточняется')}</dd></div><div><dt>Отклики</dt><dd>${task.applicantsCount||0} команд</dd></div><div><dt>Приём заявок до</dt><dd>${h(views.deadlineText(task))}${task.applicationDeadline?` · ${h(task.applicationDeadline)}`:''}</dd></div></dl>${student?`<button class="btn small" type="button" data-match-apply="${h(task.id)}" ${task.canApply===false?'disabled':''}>${task.canApply===false?'Приём завершён':'Предложить решение →'}</button>`:''}</section>`;
     }
     return {render,dispose,detail,back:()=>lastCatalog};
   };
