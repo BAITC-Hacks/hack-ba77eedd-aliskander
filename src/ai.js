@@ -67,12 +67,16 @@ export function validateOutput(output, input) {
   } else {
     const remaining = 5 - input.answers.length;
     const min = input.action === 'analyze' ? 3 : 1;
-    if (output.task !== null || output.questions.length < min || output.questions.length > remaining) throw new ApiError(502, 'AI не смог завершить интервью. Попробуйте ещё раз.');
+    if (output.task !== null || output.questions.length < min || remaining < 1) throw new ApiError(502, 'AI не смог завершить интервью. Попробуйте ещё раз.');
     const used = new Set(input.answers.map(a => a.key));
     for (const q of output.questions) {
       if (!checkObject(q) || !string(q.id, 80) || !string(q.key, 80) || !q.key.trim() || !string(q.label, 600) || !q.label.trim() || !Array.isArray(q.chips) || q.chips.length > 5 || q.chips.some(c => !string(c, 120)) || used.has(q.key)) throw new ApiError(502, 'AI повторил вопрос или вернул некорректное интервью. Попробуйте ещё раз.');
       used.add(q.key);
     }
+    // A model can occasionally suggest more useful follow-ups than the interview
+    // budget allows. Keep the valid leading questions instead of rejecting the
+    // user's answer and forcing them to submit it again.
+    if (output.questions.length > remaining) return { ...output, questions: output.questions.slice(0, remaining) };
   }
   return output;
 }
@@ -109,8 +113,15 @@ export function createAIService({ apiKey = process.env.OPENAI_API_KEY, model = p
     status() { return { configured: Boolean(apiKey), provider: 'OpenAI' }; },
     async turn(raw) {
       const input = validateInput(raw);
-      const result = await requestJSON(input, instructions, responseSchema, 'business_task_interview');
+const remaining = 5 - input.answers.length;
+      const turnLimit = input.action === 'analyze'
+        ? 'This is the initial analysis: ask no more than five questions.'
+        : remaining === 0
+          ? 'Five answers have already been received. You MUST return status ready and a best-effort draft now; do not return interview.'
+          : `There are ${remaining} interview slots left. If you return interview, return at most ${remaining} questions. Return ready only after at least three answers and sufficient information.`;
+      const result = await requestJSON(input, `${instructions}\n${turnLimit}`, responseSchema, 'business_task_interview');
       return { ...interviewRules.ensureMinimum(validateOutput(result, input), input), provider: 'OpenAI', mode: 'live' };
+
     },
     async explainMatch(facts) {
       const result = await requestJSON(facts,

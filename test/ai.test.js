@@ -56,6 +56,14 @@ test('AI output rejects repeated questions, fabricated schema shapes and invalid
   assert.equal(validateOutput(ready, input).task.title, 'Бот записи');
 });
 
+test('third interview answer is accepted when AI returns more follow-ups than slots left', () => {
+  const answers = ['goal', 'requirements', 'successCriteria'].map(key => ({ key, question: 'Уточните ' + key, answer: 'Подтверждённый ответ' }));
+  const input = validateInput({ action: 'answer', description, answers });
+  const output = { ...interview, questions: ['data', 'constraints', 'contact'].map(question) };
+  const validated = validateOutput(output, input);
+  assert.deepEqual(validated.questions.map(item => item.key), ['data', 'constraints']);
+});
+
 test('AI handles missing configuration, provider errors, refusal, invalid JSON and timeout', async () => {
   const input = { action: 'analyze', description };
   const disabled = createAIService({ apiKey: '' });

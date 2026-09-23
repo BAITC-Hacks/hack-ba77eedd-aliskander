@@ -117,3 +117,23 @@ test('readiness is prominent, business cards have no student prompt, and editor 
   assert.ok(html.includes('milestone-criteria-0'));assert.ok(html.includes('quality-result'));
   assert.equal(readiness.describe({...complete,successCriteria:'Пока не знаю'}).score,85);
 });
+
+test('teaching case is repeatable, links working prototypes and follows the three-stage demo flow',async()=>{
+  const window={},memory=new Map();
+  const ctx={window,URL,URLSearchParams,location:{href:'http://localhost:3000/demo.html'},setTimeout:fn=>setTimeout(fn,0),localStorage:{getItem:key=>memory.get(key)||null,setItem:(key,value)=>memory.set(key,value)}};
+  for(const file of ['readiness-engine.cjs','milestones.cjs','match-engine.cjs','catalog-engine.cjs','team-session.js','case-data.js','demo-api.js'])runInNewContext(readFileSync(new URL('../public/'+file,import.meta.url),'utf8'),ctx);
+  const api=window.platformApi,first=await api.startCase(),second=await api.startCase();
+  assert.notEqual(first.id,second.id);assert.equal(first.rating.total,100);
+  const offers=await api.listOffers(first.id);assert.equal(offers.length,2);
+  assert.ok(offers.every(o=>new URL(o.prototypeUrl).pathname==='/prototype.html'));
+  assert.ok(offers.every(o=>o.studentProfile.members.length===2));
+  const offer=offers.find(o=>o.teamId==='team-orbit');await api.selectOffers(first.id,[offer.id]);
+  let progress=(await api.getWorkspace('student')).stages.filter(s=>s.taskId===first.id);assert.equal(progress.length,3);
+  await assert.rejects(api.submitStage(progress[0].id,{result:'Готово',url:offers[0].prototypeUrl}));
+  await api.acceptPlan(first.id);await api.submitStage(progress[0].id,{result:'Сценарии согласованы',url:offers[0].prototypeUrl});
+  await api.reviewStage(progress[0].id,true,'Принято');
+  progress=(await api.getWorkspace('student')).stages.filter(s=>s.taskId===first.id);
+  assert.equal(progress.filter(s=>s.status==='approved').reduce((sum,s)=>sum+s.points,0),20);
+  assert.equal((await api.getProfile()).completedTasks.length,0);
+  await assert.rejects(api.reviewStage(progress[0].id,true,''));
+});
