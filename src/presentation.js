@@ -13,6 +13,9 @@ const questions = {
   contact: 'Как команда сможет связаться с представителем бизнеса?'
 };
 export function describeRating(input) {
+  if (Array.isArray(input.ratingBreakdown)) return { ...calculateRating(input), score: input.score, level: input.level,
+    breakdown: input.ratingBreakdown, source: input.ratingSource, warning: input.ratingWarning || '', missingDetails: Object.entries(extraFields).filter(([key]) => !String(input[key] || '').trim())
+      .map(([key, [label]]) => ({ key, label, hint: questions[key] })) };
   return { ...calculateRating(input), breakdown: Object.entries(fields).map(([key, [label, max]]) => ({
     key, label, max, points: typeof input[key] === 'string' && input[key].trim() ? max : 0,
     hint: questions[key]

@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { createStore, ApiError } from './store.js';
-import { describeRating, clarificationQuestions } from './presentation.js';
+import { clarificationQuestions } from './presentation.js';
+import { createSampleData } from './sample-data.js';
+import { createReadinessAssessor } from './ai-rating.js';
 
 const publicDir = new URL('../public/', import.meta.url);
 async function body(request) {
@@ -18,7 +20,7 @@ async function body(request) {
   catch { throw new ApiError(400, 'Некорректный JSON'); }
 }
 
-export function createApp(store) {
+export function createApp(store, { assessReadiness = createReadinessAssessor() } = {}) {
   return createServer(async (request, response) => {
     function json(status, value) {
       response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -36,7 +38,7 @@ export function createApp(store) {
       if (method === 'POST' && ['/api/rating', '/api/questions'].includes(path)) {
         const input = await body(request);
         if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApiError(400, 'Ожидается JSON-объект');
-        return json(200, path === '/api/rating' ? describeRating(input) : clarificationQuestions(input));
+        return json(200, path === '/api/rating' ? await assessReadiness(input) : clarificationQuestions(input));
       }
       if (method === 'GET' && path === '/api/stages') return json(200, store.listStages());
       const selection = path.match(/^\/api\/tasks\/([^/]+)\/selection$/);
@@ -51,13 +53,19 @@ export function createApp(store) {
       }
       if (path === '/api/tasks') {
         if (method === 'GET') return json(200, store.listTasks(url.searchParams.get('all') !== 'true'));
-        if (method === 'POST') return json(201, store.createTask(await body(request)));
+        if (method === 'POST') {
+          const created = store.createTask(await body(request));
+          return json(201, store.setRating(created.id, await assessReadiness(created)));
+        }
       }
       const task = path.match(/^\/api\/tasks\/([^/]+)(?:\/(publish|proposals))?$/);
       if (task) {
         const [, id, action] = task;
         if (!action && method === 'GET') return json(200, store.getTask(id));
-        if (!action && method === 'PATCH') return json(200, store.updateTask(id, await body(request)));
+        if (!action && method === 'PATCH') {
+          const updated = store.updateTask(id, await body(request));
+          return json(200, store.setRating(id, await assessReadiness(updated)));
+        }
         if (action === 'publish' && method === 'POST') return json(200, store.publishTask(id));
         if (action === 'proposals' && method === 'GET') return json(200, store.listProposals(id));
         if (action === 'proposals' && method === 'POST') return json(201, store.createProposal(id, await body(request)));
@@ -76,7 +84,9 @@ export function createApp(store) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const store = createStore(process.env.DATA_FILE || fileURLToPath(new URL('../data/db.json', import.meta.url)));
+  const store = createStore(process.env.DATA_FILE || fileURLToPath(new URL('../data/db.json', import.meta.url)), createSampleData());
+  const assessReadiness = createReadinessAssessor();
+  await Promise.all(store.listTasks(false).map(async task => store.setRating(task.id, await assessReadiness(task))));
   const port = Number(process.env.PORT || 3000);
-  createApp(store).listen(port, '127.0.0.1', () => console.log(`Demo: http://localhost:${port}`));
+  createApp(store, { assessReadiness }).listen(port, '127.0.0.1', () => console.log(`Demo: http://localhost:${port}`));
 }

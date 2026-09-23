@@ -7,6 +7,9 @@ import { once } from 'node:events';
 import { runInNewContext } from 'node:vm';
 import { createStore } from '../src/store.js';
 import { createApp } from '../src/server.js';
+import { describeRating } from '../src/presentation.js';
+
+const legacyAssessment = { assessReadiness: async input => describeRating(input) };
 
 const adapterSource = readFileSync(new URL('../public/api-client.js', import.meta.url), 'utf8');
 const autosaveSource = readFileSync(new URL('../public/draft-autosave.js', import.meta.url), 'utf8');
@@ -16,7 +19,7 @@ test('real frontend adapter: draft, existing rating, publication, proposals, sel
   const file = join(dir, 'db.json');
   // Migration must preserve a teammate's database which predates stages.
   writeFileSync(file, JSON.stringify({ tasks: [], proposals: [] }));
-  const app = createApp(createStore(file));
+  const app = createApp(createStore(file), legacyAssessment);
   t.after(async () => { await new Promise(resolve => app.close(resolve)); rmSync(dir, { recursive: true, force: true }); });
   app.listen(0, '127.0.0.1'); await once(app, 'listening');
   const base = `http://127.0.0.1:${app.address().port}`;
@@ -118,7 +121,7 @@ test('autosave preserves newer edits, retries failures and flushes before public
 
 test('requirements: repeated offers from different teams and independent manual decisions', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'most-requirements-'));
-  const app = createApp(createStore(join(dir, 'db.json')));
+  const app = createApp(createStore(join(dir, 'db.json')), legacyAssessment);
   t.after(async () => { await new Promise(resolve => app.close(resolve)); rmSync(dir, { recursive: true, force: true }); });
   app.listen(0, '127.0.0.1'); await once(app, 'listening');
   const base = `http://127.0.0.1:${app.address().port}`;

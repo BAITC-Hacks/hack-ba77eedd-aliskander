@@ -87,7 +87,7 @@
         return editable ? `<button type="button" class="improvement" data-focus-field="${h(c.key)}" aria-label="Дополнить: ${h(c.label)}. Ещё ${h(c.max - c.points)} баллов">${content}</button>` : `<div class="improvement">${content}</div>`;
       }).join('')}</div>` : '<div class="hint">✓ Командам будет проще оценить задачу и подготовить предметное предложение.</div>'}
       ${(rating.missingDetails || []).length ? `<div class="extra-details"><strong>Ещё не указано в карточке</strong>${rating.missingDetails.map(c => editable ? `<button class="improvement" type="button" data-focus-field="${h(c.key)}"><span><strong>${h(c.label)}</strong><small>${h(c.hint)}</small></span><b>↗</b></button>` : `<p class="muted">${h(c.label)}: ${h(c.hint)}</p>`).join('')}<p class="muted rating-note">Эти поля дополняют карточку; отдельные баллы за них не начисляются.</p></div>` : ''}
-      ${api.meta.mode === 'demo' ? '<p class="muted rating-note">Демо-рейтинг отражает полноту заполнения.</p>' : ''}`;
+      ${rating.warning ? `<p class="muted rating-note">⚠ ${h(rating.warning)}</p>` : rating.source === 'ai' ? '<p class="muted rating-note">Оценка сформирована ИИ по качеству и конкретности описания.</p>' : api.meta.mode === 'demo' ? '<p class="muted rating-note">Демо-рейтинг отражает полноту заполнения.</p>' : ''}`;
   }
   function draftPreview(draft, rating) {
     return `<div class="preview-heading"><div><div class="eyebrow muted">Глазами команды</div><h3>Ваша будущая карточка</h3></div><span class="live-label"><i></i>Превью</span></div>

@@ -22,12 +22,12 @@ function strings(input, keys) {
 }
 
 // One server process owns this file. Commit to disk before replacing in-memory state.
-export function createStore(file) {
+export function createStore(file, initialState = { tasks: [], proposals: [], stages: [] }) {
   let state;
   try { state = JSON.parse(readFileSync(file, 'utf8')); }
   catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    state = { tasks: [], proposals: [] };
+    state = structuredClone(initialState);
   }
   if (!Array.isArray(state.tasks) || !Array.isArray(state.proposals)) {
     throw new Error('Некорректный файл данных');
@@ -69,6 +69,14 @@ export function createStore(file) {
   const taskKeys = ['title', 'company', 'category', 'deadline', 'need', 'interactionFormat', ...Object.keys(fields)];
   return {
     selectProposals,
+    setRating(id, rating) {
+      const current = state.tasks.find(item => item.id === id);
+      if (!current) throw new ApiError(404, 'Задача не найдена');
+      const item = { ...current, score: rating.score, level: rating.level, missingFields: rating.missingFields,
+        ratingBreakdown: rating.breakdown, ratingSource: rating.source, ratingWarning: rating.warning || '' };
+      commit({ ...state, tasks: state.tasks.map(old => old.id === id ? item : old) });
+      return task(id);
+    },
     // Keep the earlier API compatible; the UI now selects individual proposal IDs.
     selectTeams(taskId, teamIds) {
       if (!Array.isArray(teamIds) || teamIds.some(id => typeof id !== 'string')) throw new ApiError(400, 'teamIds: ожидается массив строк');

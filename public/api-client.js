@@ -21,6 +21,7 @@
     return result;
   }
   const rating = raw => ({ total: raw.score, level: raw.level, missingDetails: raw.missingDetails || [],
+    source: raw.source || raw.ratingSource || 'local', warning: raw.warning || raw.ratingWarning || '',
     breakdown: (raw.breakdown || []).map(c => ({ ...c, key: keys[c.key] || c.key })),
     hints: (raw.breakdown || []).filter(c => c.points < c.max).map(c => c.hint)
   });
