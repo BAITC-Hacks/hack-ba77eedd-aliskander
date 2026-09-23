@@ -31,7 +31,7 @@ export function createApp(store, ai = createAIService()) {
       const url = new URL(request.url, 'http://localhost');
       const path = url.pathname;
       const method = request.method;
-      if (method === 'GET' && ['/', '/index.html', '/demo.html', '/app.js', '/match-engine.cjs', '/match-demo.cjs', '/match-ui.js', '/api-client.js', '/ai-flow.js', '/ai-components.js', '/demo-ai.js', '/team-session.js', '/demo-api.js', '/draft-autosave.js', '/styles.css'].includes(path)) {
+      if (method === 'GET' && ['/', '/index.html', '/demo.html', '/app.js', '/match-engine.cjs', '/match-demo.cjs', '/match-ui.js', '/catalog-engine.cjs', '/catalog-demo.cjs', '/catalog-components.js', '/catalog-page.js', '/api-client.js', '/ai-flow.js', '/ai-components.js', '/demo-ai.js', '/team-session.js', '/demo-api.js', '/draft-autosave.js', '/styles.css'].includes(path)) {
         const file = path === '/' ? 'index.html' : path.slice(1);
         response.writeHead(200, { 'Content-Type': (file.endsWith('.js') || file.endsWith('.cjs')) ? 'text/javascript; charset=utf-8' : file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8' });
         return response.end(readFileSync(new URL(file, publicDir)));
@@ -43,6 +43,13 @@ export function createApp(store, ai = createAIService()) {
           catch { match.explanationNotice = 'AI-пояснение сейчас недоступно. Показан расчёт по критериям.'; }
         }
         return json(200, match);
+      }
+      const savedRoute = path.match(/^\/api\/students\/([^/]+)\/saved\/([^/]+)$/);
+      if (savedRoute && method === 'PUT') {
+        const input = await body(request);
+        let studentId, taskId;
+        try { studentId=decodeURIComponent(savedRoute[1]); taskId=decodeURIComponent(savedRoute[2]); } catch { throw new ApiError(400,'Некорректный идентификатор'); }
+        return json(200,store.setSavedTask(studentId,taskId,input?.saved));
       }
       const studentRoute = path.match(/^\/api\/students\/([^/]+)\/profile$/);
       if (studentRoute) {
@@ -70,13 +77,16 @@ export function createApp(store, ai = createAIService()) {
         return json(200, stage[2] === 'submit' ? store.submitStage(stage[1], input) : store.reviewStage(stage[1], input));
       }
       if (path === '/api/tasks') {
-        if (method === 'GET') return json(200, store.listTasks(url.searchParams.get('all') !== 'true'));
+        if (method === 'GET') {
+          if (url.searchParams.get('all') === 'true' || !url.search) return json(200,store.listTasks(url.searchParams.get('all') !== 'true'));
+          return json(200,store.queryCatalog(url.searchParams,url.searchParams.get('studentId')));
+        }
         if (method === 'POST') return json(201, store.createTask(await body(request)));
       }
       const task = path.match(/^\/api\/tasks\/([^/]+)(?:\/(publish|proposals))?$/);
       if (task) {
         const [, id, action] = task;
-        if (!action && method === 'GET') return json(200, store.getTask(id));
+        if (!action && method === 'GET') return json(200, url.searchParams.has('studentId') ? store.getCatalogTask(id,url.searchParams.get('studentId')) : store.getTask(id));
         if (!action && method === 'PATCH') return json(200, store.updateTask(id, await body(request)));
         if (action === 'publish' && method === 'POST') return json(200, store.publishTask(id));
         if (action === 'proposals' && method === 'GET') return json(200, store.listProposals(id));

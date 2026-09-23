@@ -27,15 +27,16 @@
         await Promise.all(nodes.map(async node => {
           const task = tasks.find(t => t.id === node.dataset.matchTask);
           if (!task) return;
+          if (task.matchAvailable === false) { if(valid(node)) node.innerHTML='<p class="muted">Complete your profile to see your match</p><a class="btn secondary small" href="#profile">Добавить навыки и уровень ↗</a>'; return; }
           try {
             const cacheKey = JSON.stringify([student, task.id, task.requiredSkills, task.category, task.difficulty, task.requiredHours]);
             if (cache.size > 200) cache.clear();
-            if (!cache.has(cacheKey)) cache.set(cacheKey, api.matchTask(student, task).catch(error => { cache.delete(cacheKey); throw error; }));
+            if (!cache.has(cacheKey)) cache.set(cacheKey, (task.matchResult ? Promise.resolve(task.matchResult) : api.matchTask(student, task)).catch(error => { cache.delete(cacheKey); throw error; }));
             const match = await cache.get(cacheKey);
             if (!valid(node)) return;
             const key = 'task:' + task.id;
             records.set(key, { match, student, task });
-            node.innerHTML = summary(match, key) + `<div class="match-card-actions"><a href="#profile">Настроить профиль</a>${task.status === 'published' ? `<button type="button" class="btn small" data-match-apply="${h(task.id)}">Apply →</button>` : '<span class="muted">Приём завершён</span>'}</div>`;
+            node.innerHTML = summary(match, key) + `<div class="match-card-actions"><a href="#profile">Настроить профиль</a>${task.status === 'published' && task.canApply !== false ? `<button type="button" class="btn small" data-match-apply="${h(task.id)}">Apply →</button>` : '<span class="muted">Приём завершён</span>'}</div>`;
           } catch (error) { if (valid(node)) failure(node, error, tasks); }
         }));
       } catch (error) { nodes.forEach(node => { if (valid(node)) failure(node, error, tasks); }); }

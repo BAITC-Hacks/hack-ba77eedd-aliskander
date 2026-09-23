@@ -8,14 +8,14 @@
   const remember = id => { draftId = id; try { if (id) localStorage.setItem(draftKey, id); else localStorage.removeItem(draftKey); } catch (_) {} };
   const route = id => encodeURIComponent(id);
   const keys = { context: 'problem', expectedResult: 'outcome', successCriteria: 'success' };
-  const extraKeys = ['requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'requiredHours', 'aiSession', 'aiAssumptions', 'aiMissingInfo'];
+  const extraKeys = ['requirements', 'requiredSkills', 'difficulty', 'recommendedTeamSize', 'requiredHours', 'durationWeeks', 'teamSize', 'workFormat', 'applicationDeadline', 'createdAt', 'publishedAt', 'aiSession', 'aiAssumptions', 'aiMissingInfo'];
   const extras = value => Object.fromEntries(extraKeys.map(key => [key, value[key] || '']));
   const toServer = d => ({ ...extras(d), title: d.title || '', company: d.company || '', category: d.category || '', deadline: d.deadline || '',
     context: d.problem || '', expectedResult: d.outcome || '', successCriteria: d.success || '', data: d.data || '',
     need: d.need || '', interactionFormat: d.interactionFormat || '', constraints: d.constraints || '', users: d.users || '', contact: d.contact || '' });
-  async function request(path, method = 'GET', data) {
+  async function request(path, method = 'GET', data, signal) {
     const response = await fetch('/api' + path, {
-      method, headers: { 'Content-Type': 'application/json' },
+      method, signal, headers: { 'Content-Type': 'application/json' },
       body: data === undefined ? undefined : JSON.stringify(data)
     });
     const result = await response.json();
@@ -26,7 +26,7 @@
     breakdown: (raw.breakdown || []).map(c => ({ ...c, key: keys[c.key] || c.key })),
     hints: (raw.breakdown || []).filter(c => c.points < c.max).map(c => c.hint)
   });
-  const task = (raw, offerCount = 0) => ({ ...extras(raw), id: raw.id, title: raw.title || 'Без названия', company: raw.company || 'Бизнес',
+  const task = (raw, offerCount = raw.offerCount || 0) => ({ matchAvailable: raw.matchAvailable, canApply: raw.canApply, applicantsCount: raw.applicantsCount || 0, isSaved: Boolean(raw.isSaved), daysLeft: raw.daysLeft, isExpired: raw.isExpired, matchScore: raw.matchScore ?? null, matchResult: raw.matchResult || null, ...extras(raw), id: raw.id, title: raw.title || 'Без названия', company: raw.company || 'Бизнес',
     category: raw.category || 'Исследования', deadline: raw.deadline || '', problem: raw.context || '',
     outcome: raw.expectedResult || '', success: raw.successCriteria || '', data: raw.data || '',
     need: raw.need || '', interactionFormat: raw.interactionFormat || '', constraints: raw.constraints || '', users: raw.users || '', contact: raw.contact || '',
@@ -50,8 +50,15 @@
     matchTask: (student, task, explain = false) => request('/match' + (explain ? '/explain' : ''), 'POST', { student, task }),
     getAIStatus: () => request('/ai/status'),
     aiTurn: input => request('/ai/interview', 'POST', input),
+    async listCatalog(query, student, signal) {
+      const params = new URLSearchParams(query); params.set('view','catalog');
+      if (student) params.set('studentId',currentTeam().id);
+      const result = await request('/tasks?' + params, 'GET', undefined, signal);
+      return {...result,items:result.items.map(raw=>({...raw,...task(raw)}))};
+    },
+    saveTask: (id, saved) => request('/students/' + route(currentTeam().id) + '/saved/' + route(id), 'PUT', {saved}),
     listTasks: async () => (await request('/tasks')).map(raw => task(raw)),
-    getTask: async id => task(await request('/tasks/' + route(id))),
+    getTask: async id => task(await request('/tasks/' + route(id) + '?studentId=' + route(currentTeam().id))),
     getQuestions: async description => (await request('/questions', 'POST', { context: description })).map(q => ({ ...q, key: keys[q.key] || q.key })),
     rateTask: async draft => rating(await request('/rating', 'POST', toServer(draft))),
     async getDraft() {

@@ -123,3 +123,18 @@
 Низкий Match не блокирует отклик; автоматическое назначение не добавлено.
 
 Полная формула и контракт: [ai-match.md](ai-match.md).
+
+## Explore Tasks
+
+Новый UI вызывает `listCatalog(query, student, signal)` → `/api/tasks?view=catalog`.
+Ответ `{items,pagination,facets,matchAvailable,sort}` включает Match и число команд
+с откликами, поэтому отдельные запросы на каждую карточку не нужны.
+Прежние `/api/tasks` без параметров и `?all=true` сохраняют формат массива.
+
+`saveTask(id,saved)` → `PUT /api/students/:studentId/saved/:taskId`.
+Данные записываются в `savedTasks` без изменения профиля и существующих задач.
+
+Новые строковые поля задачи: `durationWeeks`, `teamSize`, `workFormat`, `applicationDeadline`.
+Сервер назначает `createdAt` и `publishedAt`; старый `deadline` остаётся длительностью.
+Отклик после applicationDeadline возвращает 409 независимо от состояния фронтенда.
+Полные query-параметры и границы: [task-catalog.md](task-catalog.md).
